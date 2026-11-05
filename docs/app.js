@@ -52,6 +52,11 @@ function ftIn(mm) {
   const whole = Math.floor(inch), frac = { 0: '', 0.25: '¼', 0.5: '½', 0.75: '¾' }[inch - whole];
   return `${ft}' ${whole}${frac}"`;
 }
+function distM(lat1, lng1, lat2, lng2) {
+  const R = 6371000, r = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lng2 - lng1) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
 // No. telefon Malaysia → format wa.me (cth: 012-345 6789 → 60123456789)
 const waNumber = (phone) => { let d = String(phone || '').replace(/\D/g, ''); if (d.startsWith('0')) d = '6' + d; return d.length >= 10 ? d : ''; };
 
@@ -87,6 +92,8 @@ const ICON = {
   copy: I('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>'),
   phone: I('<path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/>'),
   install: I('<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 7v7M9 11l3 3 3-3M10 18h4"/>'),
+  selfie: I('<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c1-1.8 2.6-2.7 4.5-2.7s3.5.9 4.5 2.7"/>'),
+  flip: I('<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/>'),
   wifiOff: I('<path d="M2 8.8a15 15 0 0 1 4.2-2.6M9.8 5.2A15 15 0 0 1 22 8.8M5 12.5a10 10 0 0 1 4-2.2M15.5 10.6a10 10 0 0 1 3.5 1.9M8.5 16a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/>'),
   wa: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>',
 };
@@ -146,11 +153,38 @@ function getPosition() {
     if (!window.isSecureContext) return reject(new Error('GPS hanya berfungsi melalui HTTPS.'));
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }),
-      (e) => reject(new Error(e.code === 1 ? 'Akses lokasi ditolak. Benarkan "Location" untuk laman ini dalam tetapan browser.' :
-        e.code === 3 ? 'GPS mengambil masa terlalu lama. Cuba di kawasan terbuka.' : 'Lokasi tidak dapat dikesan.')),
+      (e) => { const err = new Error(e.code === 1 ? 'Akses lokasi ditolak. Benarkan "Location" untuk laman ini dalam tetapan browser, kemudian cuba lagi.' :
+        e.code === 3 ? 'GPS mengambil masa terlalu lama. Pastikan Location telefon dihidupkan dan cuba di kawasan terbuka.' :
+        'Lokasi tidak dapat dikesan. Hidupkan Location / GPS di telefon (tarik menu atas skrin), kemudian cuba lagi.'); err.code = 'NO_GPS'; reject(err); },
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
   });
 }
+
+/* ================= Semakan rangkaian (anti-VPN) ================= */
+// Semak IP semasa: tolak VPN, proxy, Tor, IP pusat data (hosting) dan IP luar Malaysia.
+// Jika semakan tidak dapat dibuat, punch juga ditolak (lebih selamat).
+async function checkNetwork() {
+  const get = async (url) => {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 7000);
+    try { const r = await fetch(url, { signal: ctrl.signal, cache: 'no-store' }); if (!r.ok) throw new Error(r.status); return await r.json(); } finally { clearTimeout(t); }
+  };
+  try {
+    const j = await get('https://api.ipapi.is/');
+    const cc = j.location?.country_code || null;
+    const isp = j.company?.name || j.asn?.org || '';
+    const flagged = [j.is_vpn && 'VPN', j.is_proxy && 'proxy', j.is_tor && 'Tor', j.is_datacenter && 'IP pusat data'].filter(Boolean);
+    if (flagged.length) return { ok: false, reason: 'vpn', detail: flagged.join(' / '), ip: j.ip, isp, country: cc };
+    if (cc && cc !== 'MY') return { ok: false, reason: 'country', detail: cc, ip: j.ip, isp, country: cc };
+    return { ok: true, ip: j.ip, isp, country: cc };
+  } catch {
+    return { ok: false, reason: 'unknown' };
+  }
+}
+const NET_MSG = {
+  vpn: (n) => `Sambungan anda dikesan melalui ${n.detail}. Matikan VPN / proxy dan gunakan data telefon atau WiFi pejabat.`,
+  country: (n) => `Sambungan internet anda dari luar Malaysia (${n.detail}). Matikan VPN dan cuba lagi.`,
+  unknown: () => 'Rangkaian tidak dapat disahkan. Pastikan internet berfungsi, matikan VPN, kemudian cuba lagi.',
+};
 
 /* ================= Modal / bottom sheet ================= */
 function openModal(html, onMount) {
@@ -231,12 +265,13 @@ function drawing(m, { dims = true } = {}) {
 
 /* ================= Komponen kecil ================= */
 function geoPill(ok, dist) {
-  if (ok == null) return '<span class="pill p-na" title="Tapak tiada koordinat GPS">Tiada GPS</span>';
-  return ok ? `<span class="pill p-ok" title="${fmtNum(dist)} m dari tapak">Di tapak</span>` : `<span class="pill p-bad" title="Di luar kawasan tapak">${fmtNum(dist)} m</span>`;
+  if (ok == null) return '<span class="pill p-na" title="Lokasi pejabat belum ditetapkan">Tiada GPS</span>';
+  return ok ? `<span class="pill p-ok" title="${fmtNum(dist)} m dari pejabat">Dalam kawasan</span>` : `<span class="pill p-bad" title="Di luar kawasan pejabat">${fmtNum(dist)} m</span>`;
 }
 const pageHead = (title, sub, actions = '') => `<div class="page-head"><div class="ph-text"><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${actions ? `<div class="ph-actions">${actions}</div>` : ''}</div>`;
 const emptyBox = (icon, title, text) => `<div class="empty"><div class="ill">${icon}</div><h3>${title}</h3><p>${text}</p></div>`;
 const avatar = (name, cls = '') => `<span class="avatar ${cls}" aria-hidden="true">${esc(initials(name))}</span>`;
+const placeName = (r) => r.office_name || r.project_name || 'Pejabat';
 const steps = (status) => `<div class="steps s${STEP[status]}" aria-label="Status: ${STATUS[status]}"><i></i><i></i><i></i><i></i></div>`;
 const skeleton = () => `<div class="sk sk-h"></div><div class="sk-row"><div class="sk sk-tile"></div><div class="sk sk-tile"></div><div class="sk sk-tile"></div></div><div class="sk sk-card"></div><div class="sk sk-card"></div>`;
 
@@ -299,6 +334,10 @@ async function router() {
   } finally { clearTimeout(sk); }
 }
 window.addEventListener('hashchange', router);
+document.addEventListener('click', (e) => {
+  const z = e.target.closest('img[data-zoom]');
+  if (z && z.src) openModal(`<div class="modal-head"><h2>${esc(z.alt || 'Gambar')}</h2><button class="btn icon ghost" data-close aria-label="Tutup">${ICON.x}</button></div><img class="zoom" src="${z.src}" alt="">`);
+});
 window.addEventListener('online', () => { const o = $('#offline'); if (o) o.hidden = true; });
 window.addEventListener('offline', () => { const o = $('#offline'); if (o) o.hidden = false; });
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; });
@@ -313,7 +352,7 @@ function renderLogin() {
         <p>Sistem dalaman AJC Construction untuk ukuran tapak dan kehadiran staff.</p>
         <ul class="lb-feat">
           <li>${ICON.ruler}<span>Ukuran mm & kaki-inci dengan lakaran automatik</span></li>
-          <li>${ICON.gps}<span>Punch in / out dengan semakan GPS tapak</span></li>
+          <li>${ICON.selfie}<span>Punch di pejabat: GPS + selfie, tanpa VPN</span></li>
           <li>${ICON.layers}<span>Ringkasan pesanan kaca & helaian bengkel</span></li>
         </ul>
       </div>
@@ -352,7 +391,7 @@ async function renderDashboard() {
   const feedItem = (f) => {
     const ic = f.type === 'measure' ? ICON.ruler : f.type === 'in' ? ICON.punch : ICON.out;
     const verb = f.type === 'measure' ? 'mengukur' : f.type === 'in' ? 'punch in di' : 'punch out dari';
-    const what = f.type === 'measure' ? `<b>${esc(f.text)}</b> · ${esc(f.sub)}` : `<b>${esc(f.project_name || 'Bengkel / Pejabat')}</b> ${f.ok === false ? `<span class="pill p-bad">${fmtNum(f.dist)} m</span>` : ''}`;
+    const what = f.type === 'measure' ? `<b>${esc(f.text)}</b> · ${esc(f.sub)}` : `<b>${esc(f.place || 'pejabat')}</b>`;
     return `<li class="feed-i ${f.type}"><span class="feed-ic">${ic}</span><div><div>${esc(firstName(f.user_name))} ${verb} ${what}</div>
       <small>${timeAgo(f.at)}${f.type === 'measure' && f.project_name ? ` · ${esc(f.project_name)}` : ''}</small></div></li>`;
   };
@@ -363,15 +402,18 @@ async function renderDashboard() {
       ${kpi('Bertugas sekarang', `${d.on_duty.length}<small> / ${d.staff_total}</small>`, ICON.punch, 'k-ok', '#rekod')}
       ${kpi('Projek aktif', d.active_projects, ICON.proj, '', '#projek')}
       ${kpi('Kaca dalam proses', `${fmtNum(d.active_area_m2, 1)}<small> m²</small>`, ICON.layers)}
-      ${kpi('Amaran GPS · 7 hari', d.gps_alerts_7d, ICON.alert, d.gps_alerts_7d ? 'k-bad' : '', '#rekod')}
+      ${kpi('Belum lapor diri', `${d.not_in_today.length}<small> / ${d.staff_count}</small>`, ICON.alert, d.not_in_today.length ? 'k-warn' : 'k-ok', '#rekod')}
     </div>
     <div class="dash-grid">
       <section class="card">
         <div class="card-head"><h2>Sedang bertugas</h2><span class="live"><span class="dot"></span>Langsung</span></div>
-        ${d.on_duty.length ? `<ul class="duty">${d.on_duty.map((a) => `<li>${avatar(a.user_name)}<div class="duty-t"><b>${esc(a.user_name)}</b>
-          <small>${a.project_id ? `<a href="#projek/${a.project_id}">${esc(a.project_name)}</a>` : 'Bengkel / Pejabat'}</small></div>
+        ${d.on_duty.length ? `<ul class="duty">${d.on_duty.map((a) => `<li>${a.in_selfie ? `<img class="avatar selfie-av" data-photo="${esc(a.in_selfie)}" data-zoom alt="Selfie ${esc(a.user_name)}">` : avatar(a.user_name)}<div class="duty-t"><b>${esc(a.user_name)}</b>
+          <small>Lapor diri di ${esc(a.office_name || 'pejabat')}</small></div>
           <div class="duty-r"><span class="mono">${fmtTime(a.in_at)}</span>${geoPill(a.in_ok, a.in_dist_m)}</div></li>`).join('')}</ul>`
           : `<p class="muted small">Tiada staff bertugas sekarang.</p>`}
+        ${d.not_in_today.length ? `<div class="absent"><div class="eyebrow">Belum lapor diri hari ini</div>
+          <ul class="duty">${d.not_in_today.map((a) => `<li>${avatar(a.user_name, 'dim')}<div class="duty-t"><b>${esc(a.user_name)}</b><small>Belum punch in</small></div>
+          ${a.phone ? `<a class="btn icon" href="tel:${esc(a.phone.replace(/\s/g, ''))}" aria-label="Telefon ${esc(a.user_name)}">${ICON.phone}</a>` : ''}</li>`).join('')}</ul></div>` : ''}
       </section>
       <section class="card">
         <div class="card-head"><h2>Aktiviti terkini</h2></div>
@@ -389,19 +431,102 @@ async function renderDashboard() {
           ${list.length ? '' : '<div class="pnone">Tiada projek</div>'}</div>`;
       }).join('')}</div>
     </section>`);
+  hydratePhotos($('#main'));
   $('#d-proj').onclick = () => projectForm();
   $('#d-staff').onclick = () => staffForm();
 }
 
+/* ================= Kamera selfie ================= */
+// Buka kamera depan, ambil selfie dan cop masa + lokasi pada gambar. Pulangkan data URL, atau null jika dibatalkan.
+function takeSelfie({ kind, place }) {
+  return new Promise((resolve) => {
+    let stream = null, shot = null, done = false;
+    const W = 480, H = 640;
+    const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const stamp = () => {
+      const now = new Date();
+      const g = ctx.createLinearGradient(0, H - 150, 0, H);
+      g.addColorStop(0, 'rgba(11,37,69,0)'); g.addColorStop(1, 'rgba(11,37,69,.9)');
+      ctx.fillStyle = g; ctx.fillRect(0, H - 150, W, 150);
+      ctx.fillStyle = '#fff'; ctx.textBaseline = 'alphabetic';
+      ctx.font = '800 44px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.fillText(now.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }), 22, H - 66);
+      ctx.font = '700 17px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.fillText(`PUNCH ${kind === 'in' ? 'IN' : 'OUT'} · ${now.toLocaleDateString('ms-MY', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' })}`, 22, H - 40);
+      ctx.font = '600 16px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.fillText(`${place} · ${state.me.name}`.slice(0, 46), 22, H - 18);
+    };
+    const drawCover = (src, sw, sh, mirror) => {
+      const sc = Math.max(W / sw, H / sh), dw = sw * sc, dh = sh * sc;
+      ctx.save();
+      if (mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+      ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      ctx.restore(); stamp();
+      return canvas.toDataURL('image/jpeg', 0.72);
+    };
+    const stop = () => { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; };
+    const finish = (val) => { if (done) return; done = true; stop(); closeModal(); resolve(val); };
+
+    openModal(`
+      <div class="modal-head"><div><div class="eyebrow">Punch ${kind === 'in' ? 'in' : 'out'} · ${esc(place)}</div><h2>Ambil selfie</h2></div><button class="btn icon ghost" id="cam-x" aria-label="Batal">${ICON.x}</button></div>
+      <div class="cam" id="cam">
+        <video id="cam-v" playsinline muted autoplay></video>
+        <img id="cam-shot" alt="Selfie anda" hidden>
+        <div class="cam-guide" id="cam-guide"></div>
+        <div class="cam-msg" id="cam-msg">Membuka kamera…</div>
+      </div>
+      <p class="muted small cam-tip" id="cam-tip">Pastikan muka jelas dalam bulatan. Masa dan lokasi akan dicop pada gambar.</p>
+      <input id="cam-file" type="file" accept="image/*" capture="user" class="sr-only">
+      <div class="cam-actions" id="cam-live"><button class="shutter" id="cam-snap" aria-label="Ambil gambar" disabled><span></span></button></div>
+      <div class="modal-foot" id="cam-review" hidden><button class="btn" id="cam-retake">${ICON.flip}<span>Ambil semula</span></button>
+        <button class="btn primary" id="cam-ok">${ICON.check}<span>Guna & punch ${kind === 'in' ? 'in' : 'out'}</span></button></div>`, (dlg) => {
+      const v = $('#cam-v');
+      const showShot = (url) => {
+        shot = url; $('#cam-shot').src = url; $('#cam-shot').hidden = false; v.hidden = true; $('#cam-guide').hidden = true;
+        $('#cam-live').hidden = true; $('#cam-review').hidden = false; $('#cam-tip').textContent = 'Semak gambar. Tekan "Ambil semula" jika muka tidak jelas.';
+      };
+      const live = () => {
+        shot = null; $('#cam-shot').hidden = true; v.hidden = false; $('#cam-guide').hidden = false; $('#cam-live').hidden = false; $('#cam-review').hidden = true;
+        $('#cam-tip').textContent = 'Pastikan muka jelas dalam bulatan. Masa dan lokasi akan dicop pada gambar.';
+      };
+      // Sandaran: kamera telefon biasa (jika browser tidak benarkan kamera langsung)
+      const fallback = (why) => {
+        $('#cam-msg').innerHTML = `${esc(why)}<br><button class="btn" id="cam-open" type="button">${ICON.camera}<span>Buka kamera</span></button>`;
+        $('#cam-msg').hidden = false; $('#cam-snap').disabled = true;
+        $('#cam-open').onclick = () => $('#cam-file').click();
+      };
+      $('#cam-file').onchange = (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const img = new Image(); const url = URL.createObjectURL(f);
+        img.onload = () => { showShot(drawCover(img, img.width, img.height, false)); URL.revokeObjectURL(url); $('#cam-msg').hidden = true; };
+        img.src = url;
+      };
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 1280 } }, audio: false })
+          .then((st) => {
+            if (done) { st.getTracks().forEach((t) => t.stop()); return; }
+            stream = st; v.srcObject = st;
+            v.onloadedmetadata = () => { $('#cam-msg').hidden = true; $('#cam-snap').disabled = false; };
+          })
+          .catch((err) => fallback(err && err.name === 'NotAllowedError' ? 'Akses kamera ditolak. Benarkan kamera dalam tetapan browser, atau:' : 'Kamera tidak dapat dibuka.'));
+      } else fallback('Browser ini tidak menyokong kamera langsung.');
+      $('#cam-snap').onclick = () => { if (v.videoWidth) showShot(drawCover(v, v.videoWidth, v.videoHeight, true)); };
+      $('#cam-retake').onclick = () => { if (stream) live(); else $('#cam-file').click(); };
+      $('#cam-ok').onclick = () => finish(shot);
+      $('#cam-x').onclick = () => finish(null);
+      dlg.addEventListener('close', () => finish(null), { once: true });
+    });
+  });
+}
+
 /* ================= Punch in / out ================= */
 async function renderPunch() {
-  const [{ open }, projects, mine] = await Promise.all([
+  const [{ open }, offices, mine] = await Promise.all([
     api('/api/attendance/status'),
-    api('/api/projects'),
+    api('/api/offices'),
     api(`/api/attendance?from=${encodeURIComponent(new Date(Date.now() - 6 * 864e5).toISOString())}`),
   ]);
-  const active = projects.filter((p) => p.status !== 'siap');
-  const last = store.get('ajc_last_project') || '';
   const myRows = mine.filter((r) => r.user_id === state.me.id);
   const weekHours = myRows.reduce((a, r) => a + (r.hours || 0), 0);
   const days = new Set(myRows.map((r) => ymd(r.in_at))).size;
@@ -418,16 +543,16 @@ async function renderPunch() {
         <div class="shift-info">
           <div><div class="k">Masuk</div><div class="v mono">${fmtTime(open.in_at)}</div></div>
           <div><div class="k">Tempoh</div><div class="v mono" id="elapsed">—</div></div>
-          <div class="wide"><div class="k">Lokasi</div><div class="v">${esc(open.project_name || 'Bengkel / Pejabat')}</div></div>
+          <div class="wide"><div class="k">Lapor diri di</div><div class="v">${esc(placeName(open))}</div></div>
         </div>
         <div class="punch-wrap"><button class="punch-btn out" id="pbtn">${ICON.power}<span>Punch Out</span><small>Tamat kerja</small></button></div>
       ` : `
-        <div class="hero-select"><label for="pproj">Lokasi kerja hari ini</label>
-          <select id="pproj"><option value="">Bengkel / Pejabat</option>
-          ${active.map((p) => `<option value="${p.id}" ${String(p.id) === last ? 'selected' : ''}>${esc(p.name)}${p.lat == null ? ' (tiada GPS)' : ''}</option>`).join('')}</select></div>
+        <div class="hero-offices"><span class="k">Lapor diri di pejabat</span>
+          <div class="office-chips">${offices.map((o) => `<span class="glass">${ICON.pin}${esc(o.name)}</span>`).join('')}</div></div>
         <div class="punch-wrap"><button class="punch-btn" id="pbtn">${ICON.power}<span>Punch In</span><small>Mula kerja</small></button></div>
       `}
-      <div class="gps-line" id="gps">${ICON.gps}<span>Lokasi GPS direkod bila anda tekan butang</span></div>
+      <div class="gps-line" id="gps">${ICON.selfie}<span>GPS + selfie · tanpa VPN · dalam kawasan pejabat</span></div>
+      <div class="loc-off" id="loc-off" hidden>${ICON.alert}<span><b>Location dimatikan untuk laman ini.</b> Hidupkan GPS dan benarkan "Location" dalam tetapan browser sebelum punch.</span></div>
     </section>
     <section class="stack">
       <div class="mini-stats"><div><small>Jam 7 hari</small><b class="mono">${fmtHours(weekHours)}</b></div><div><small>Hari bekerja</small><b class="mono">${days}</b></div></div>
@@ -442,22 +567,47 @@ async function renderPunch() {
     if (open && $('#elapsed')) $('#elapsed').textContent = fmtHours((now - new Date(open.in_at)) / 36e5);
   };
   tick(); state.clockTimer = setInterval(tick, 1000 * 15);
+  hydratePhotos($('#main'));
+  try {
+    navigator.permissions?.query({ name: 'geolocation' }).then((ps) => {
+      const show = () => { const el = $('#loc-off'); if (el) el.hidden = ps.state !== 'denied'; };
+      show(); ps.onchange = show;
+    }).catch(() => {});
+  } catch {}
 
   $('#pbtn').onclick = (e) => busy(e.currentTarget, async () => {
-    const gpsTxt = $('#gps span'); $('#gps').classList.add('seeking'); gpsTxt.textContent = 'Mengesan lokasi GPS…';
-    let pos;
-    try { pos = await getPosition(); } catch (err) { $('#gps').classList.remove('seeking'); gpsTxt.textContent = err.message; throw err; }
+    const gpsTxt = $('#gps span'); $('#gps').classList.add('seeking'); gpsTxt.textContent = 'Menyemak GPS & rangkaian…';
+    const reject = (title, sub) => { $('#gps').classList.remove('seeking'); gpsTxt.textContent = title; celebrate({ ok: false, title, sub }); };
+    const [gpsRes, net] = await Promise.all([getPosition().then((p) => ({ p }), (e) => ({ e })), checkNetwork()]);
+    if (gpsRes.e) return reject('GPS / Location tidak aktif', gpsRes.e.message);
+    const pos = gpsRes.p;
+    if (!net.ok) return reject(net.reason === 'unknown' ? 'Rangkaian tidak disahkan' : 'VPN dikesan', NET_MSG[net.reason](net));
     gpsTxt.textContent = `Lokasi dikesan · ketepatan ±${pos.acc} m`;
+    const kind = open ? 'out' : 'in';
+    // 1) Semak radius dahulu supaya staff tidak perlu selfie jika berada di luar kawasan
+    const near = offices.filter((o) => o.lat != null).map((o) => ({ o, d: Math.round(distM(pos.lat, pos.lng, o.lat, o.lng)) })).sort((a, b) => a.d - b.d)[0];
+    if (!near) return reject('Lokasi pejabat belum ditetapkan', 'Sila hubungi admin untuk tetapkan lokasi pejabat.');
+    if (pos.acc > 200) return reject('Isyarat GPS lemah', `Ketepatan ±${pos.acc} m. Tunggu sebentar atau keluar dari bangunan, kemudian cuba lagi.`);
+    if (near.d > near.o.radius_m) return reject('Di luar kawasan pejabat', `Anda ${fmtNum(near.d)} m dari ${near.o.name} (had ${near.o.radius_m} m). Punch hanya di ${offices.map((o) => o.name).join(' atau ')}.`);
+    // 2) Selfie
+    gpsTxt.textContent = `Di ${near.o.name} · ${fmtNum(near.d)} m. Sila ambil selfie.`;
+    const selfie = await takeSelfie({ kind, place: near.o.name });
+    $('#gps').classList.remove('seeking');
+    if (!selfie) { gpsTxt.textContent = 'Punch dibatalkan. Selfie diperlukan.'; return; }
+    // 3) Hantar (server semak semula radius & selfie)
     const at = fmtTime(new Date().toISOString());
-    if (open) {
-      const r = await api('/api/attendance/out', { body: pos });
-      celebrate(r.inside === false ? { ok: false, title: `Punch out ${at}`, sub: `Direkod, tetapi anda ${fmtNum(r.dist)} m dari tapak.` }
-        : { title: `Punch out ${at}`, sub: `Terima kasih, ${firstName(state.me.name)}. Jumpa esok!` });
-    } else {
-      const pid = $('#pproj').value; store.set('ajc_last_project', pid);
-      const r = await api('/api/attendance/in', { body: { ...pos, project_id: pid || null } });
-      celebrate(r.ok === false ? { ok: false, title: `Punch in ${at}`, sub: `Amaran: anda ${fmtNum(r.dist)} m dari tapak. Admin akan nampak rekod ini.` }
-        : { title: `Punch in ${at}`, sub: r.ok ? `Di tapak · ${fmtNum(r.dist)} m dari lokasi projek` : 'Selamat bekerja!' });
+    try {
+      if (open) {
+        const r = await api('/api/attendance/out', { body: { ...pos, selfie, net } });
+        celebrate({ title: `Punch out ${at}`, sub: `Di ${r.office_name} · Terima kasih, ${firstName(state.me.name)}. Jumpa esok!` });
+      } else {
+        const r = await api('/api/attendance/in', { body: { ...pos, selfie, net } });
+        celebrate({ title: `Punch in ${at}`, sub: `Di ${r.office_name} · ${fmtNum(r.dist)} m dari pejabat. Selamat bekerja!` });
+      }
+    } catch (err) {
+      const titles = { OUTSIDE: 'Di luar kawasan pejabat', WEAK_GPS: 'Isyarat GPS lemah', VPN: 'VPN dikesan' };
+      if (!titles[err.code]) throw err;
+      return reject(titles[err.code], err.message);
     }
     renderPunch();
   });
@@ -468,11 +618,14 @@ function recItem(r, showName = false) {
   return `<div class="rec">
     <div class="day"><b>${d.toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric' })}</b><span>${d.toLocaleDateString('ms-MY', { timeZone: TZ, weekday: 'short' })}</span></div>
     <div class="what">
-      <div class="t">${showName ? `${esc(r.user_name)} · ` : ''}${esc(r.project_name || 'Bengkel / Pejabat')}</div>
+      <div class="t">${showName ? `${esc(r.user_name)} · ` : ''}${esc(placeName(r))}</div>
       <div class="s"><span class="mono">${fmtTime(r.in_at)} → ${r.out_at ? fmtTime(r.out_at) : '…'}</span>${gps(r.in_lat, r.in_lng, r.in_ok, r.in_dist_m)}${r.out_at ? gps(r.out_lat, r.out_lng, r.out_ok, r.out_dist_m) : ''}</div>
       ${r.note ? `<div class="s">${esc(r.note)}</div>` : ''}
     </div>
     <div class="hrs">${r.out_at ? `${fmtHours(r.hours)}<small>jam</small>` : '<span class="pill p-ok">Aktif</span>'}</div>
+    ${r.in_selfie || r.out_selfie ? `<div class="selfies">
+      ${r.in_selfie ? `<figure><img data-photo="${esc(r.in_selfie)}" data-zoom alt="Selfie punch in ${esc(r.user_name || '')}"><figcaption>Masuk</figcaption></figure>` : ''}
+      ${r.out_selfie ? `<figure><img data-photo="${esc(r.out_selfie)}" data-zoom alt="Selfie punch out ${esc(r.user_name || '')}"><figcaption>Keluar</figcaption></figure>` : ''}</div>` : ''}
   </div>`;
 }
 
@@ -526,13 +679,12 @@ function projectForm(p = null) {
         <div class="seg seg-fill" id="pf-status">${Object.entries(STATUS).map(([k, l]) => `<button type="button" data-v="${k}" class="${(p?.status || 'ukur') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       </div>
       <div class="fsec">
-        <div class="fsec-h">${ICON.gps}Lokasi GPS tapak</div>
-        <p class="muted small" style="margin:0">Digunakan untuk semak punch in staff. Tekan butang di bawah semasa berada di tapak.</p>
+        <div class="fsec-h">${ICON.gps}Lokasi tapak (untuk Waze / Maps)</div>
+        <p class="muted small" style="margin:0">Supaya staff boleh terus navigasi ke tapak. Tekan butang di bawah semasa berada di tapak.</p>
         <button type="button" class="btn" id="pf-here">${ICON.pin}<span>Guna lokasi saya sekarang</span></button>
-        <div class="grid3">
+        <div class="grid2">
           <label class="f">Latitude<input id="pf-lat" inputmode="decimal" value="${p?.lat ?? ''}" placeholder="3.0000"></label>
           <label class="f">Longitude<input id="pf-lng" inputmode="decimal" value="${p?.lng ?? ''}" placeholder="101.000"></label>
-          <label class="f">Radius (m)<input id="pf-rad" type="number" min="30" max="5000" value="${p?.radius_m ?? 200}"></label>
         </div>
       </div>
       <details class="fsec" ${p?.notes ? 'open' : ''}><summary>Lagi: kod projek & nota</summary>
@@ -550,7 +702,7 @@ function projectForm(p = null) {
     });
     $('#pf').onsubmit = (e) => { e.preventDefault(); busy($('#pf-save'), async () => {
       const body = { name: $('#pf-name').value, client: $('#pf-client').value, phone: $('#pf-phone').value, address: $('#pf-address').value,
-        code: $('#pf-code').value, status, lat: $('#pf-lat').value, lng: $('#pf-lng').value, radius_m: $('#pf-rad').value, notes: $('#pf-notes').value };
+        code: $('#pf-code').value, status, lat: $('#pf-lat').value, lng: $('#pf-lng').value, notes: $('#pf-notes').value };
       if (p) { await api(`/api/projects/${p.id}`, { method: 'PATCH', body }); closeModal(); toast('Projek disimpan'); renderProject(p.id); }
       else { const r = await api('/api/projects', { body }); closeModal(); toast('Projek dicipta'); state.projTab = 'ukuran'; location.hash = `#projek/${r.id}`; }
     }); };
@@ -611,7 +763,7 @@ async function renderProject(id) {
         <button class="btn" id="pprint">${ICON.print}<span>Cetak</span></button>
         ${isAdmin ? `<button class="btn danger" id="pdel">${ICON.trash}<span>Padam</span></button>` : ''}
       </div>
-      ${p.lat == null ? `<div class="notice no-print">${ICON.gps}<span>Tiada GPS tapak. Tekan <b>Edit</b> dan tetapkan lokasi supaya punch in staff boleh disemak.</span></div>` : ''}
+      ${p.lat == null ? `<div class="notice no-print">${ICON.gps}<span>Lokasi tapak belum ditetapkan. Tekan <b>Edit</b> untuk tambah, supaya staff boleh navigasi dengan Waze / Maps.</span></div>` : ''}
     </section>
 
     <div class="stats"><div><div class="eyebrow">Ukuran</div><div class="v">${ms.length}</div></div>
@@ -688,9 +840,8 @@ async function renderProject(id) {
     try { await api(`/api/projects/${id}`, { method: 'DELETE' }); toast('Projek dipadam'); location.hash = '#projek'; } catch (e) { toast(e.message, true); }
   };
   $('#main').addEventListener('click', async (e) => {
-    const ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]'), z = e.target.closest('[data-zoom]');
+    const ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
     if (ed) measurementForm(p.id, ms.find((m) => m.id === Number(ed.dataset.edit)));
-    if (z) openModal(`<div class="modal-head"><h2>Gambar tapak</h2><button class="btn icon ghost" data-close aria-label="Tutup">${ICON.x}</button></div><img class="zoom" src="${z.src}" alt="">`);
     if (del) {
       const m = ms.find((x) => x.id === Number(del.dataset.del));
       if (!(await confirmBox('Padam ukuran?', `${m.location} — ${m.width_mm} × ${m.height_mm} mm`))) return;
@@ -834,7 +985,7 @@ async function renderRecords() {
   const from = store.get('ajc_rf') || ymd(Date.now() - 6 * 864e5), to = store.get('ajc_rt') || today, uid = store.get('ajc_ru') || '';
   const users = isAdmin ? await api('/api/users') : [];
   shell(`
-    ${pageHead('Rekod kehadiran', isAdmin ? 'Punch in / out semua staff dengan semakan GPS' : 'Rekod punch anda', `<button type="button" class="btn" id="rcsv">${ICON.dl}<span>Excel (CSV)</span></button>`)}
+    ${pageHead('Rekod kehadiran', isAdmin ? 'Punch in / out semua staff di pejabat' : 'Rekod punch anda', `<button type="button" class="btn" id="rcsv">${ICON.dl}<span>Excel (CSV)</span></button>`)}
     <section class="card filters">
       <div class="seg" id="rquick"><button data-r="0">Hari ini</button><button data-r="6">7 hari</button><button data-r="29">30 hari</button></div>
       <div class="filter-fields">
@@ -858,21 +1009,21 @@ async function renderRecords() {
       const c = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const dt = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: TZ, hour12: false }) : '');
       const yn = (v) => (v == null ? '' : v ? 'Ya' : 'Tidak');
-      const head = ['Staff', 'Projek', 'Masuk', 'Keluar', 'Jam', 'Lokasi masuk', 'Jarak masuk (m)', 'Dalam kawasan (masuk)', 'Lokasi keluar', 'Jarak keluar (m)', 'Dalam kawasan (keluar)', 'Nota'];
-      const lines = [head.map(c).join(',')].concat(rows.map((r) => [r.user_name, r.project_name || 'Bengkel / Pejabat', dt(r.in_at), dt(r.out_at), r.hours != null ? r.hours.toFixed(2) : '',
-        r.in_lat != null ? `${r.in_lat},${r.in_lng}` : '', r.in_dist_m, yn(r.in_ok), r.out_lat != null ? `${r.out_lat},${r.out_lng}` : '', r.out_dist_m, yn(r.out_ok), r.note].map(c).join(',')));
+      const head = ['Staff', 'Pejabat', 'Masuk', 'Keluar', 'Jam', 'GPS masuk', 'Jarak masuk (m)', 'Dalam kawasan (masuk)', 'GPS keluar', 'Jarak keluar (m)', 'Dalam kawasan (keluar)', 'Selfie masuk', 'Selfie keluar', 'IP masuk', 'Rangkaian masuk', 'Nota'];
+      const lines = [head.map(c).join(',')].concat(rows.map((r) => [r.user_name, placeName(r), dt(r.in_at), dt(r.out_at), r.hours != null ? r.hours.toFixed(2) : '',
+        r.in_lat != null ? `${r.in_lat},${r.in_lng}` : '', r.in_dist_m, yn(r.in_ok), r.out_lat != null ? `${r.out_lat},${r.out_lng}` : '', r.out_dist_m, yn(r.out_ok), r.in_selfie ? 'Ada' : '', r.out_selfie ? 'Ada' : '', r.in_net?.ip || '', r.in_net?.isp || '', r.note].map(c).join(',')));
       downloadText(`kehadiran-ajc-${f}-hingga-${t}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
       toast('Fail CSV dimuat turun');
     };
     const total = rows.reduce((a, r) => a + (r.hours || 0), 0);
-    const outside = rows.filter((r) => r.in_ok === false || r.out_ok === false).length;
     const per = {};
     rows.forEach((r) => { const x = (per[r.user_name] = per[r.user_name] || { h: 0, d: new Set(), n: 0, bad: 0 }); x.h += r.hours || 0; x.d.add(ymd(r.in_at)); x.n += 1; if (r.in_ok === false || r.out_ok === false) x.bad += 1; });
     $('#rsum').innerHTML = `<div class="stats"><div><div class="eyebrow">Rekod</div><div class="v">${rows.length}</div></div>
       <div><div class="eyebrow">Jumlah jam</div><div class="v">${fmtNum(total, 1)}<small> j</small></div></div>
-      <div class="${outside ? 'bad' : ''}"><div class="eyebrow">Luar kawasan</div><div class="v">${outside}</div></div></div>
+      <div><div class="eyebrow">Staff hadir</div><div class="v">${Object.keys(per).length}</div></div></div>
       ${isAdmin && Object.keys(per).length > 1 ? `<div class="people">${Object.entries(per).sort((a, b) => b[1].h - a[1].h).map(([n, v]) => `<div class="person-card">${avatar(n)}<div><b>${esc(n)}</b><small>${v.d.size} hari · ${v.n} punch${v.bad ? ` · <span class="txt-bad">${v.bad} amaran</span>` : ''}</small></div><span class="mono">${fmtHours(v.h)}</span></div>`).join('')}</div>` : ''}`;
     $('#rtbl').innerHTML = rows.length ? `<div class="rec-list">${rows.map((r) => recItem(r, isAdmin)).join('')}</div>` : emptyBox(ICON.rec, 'Tiada rekod', 'Tiada punch in dalam tempoh ini.');
+    hydratePhotos($('#rtbl'));
   };
   ['#rf', '#rt', '#ru'].forEach((s) => $(s) && ($(s).onchange = () => load().catch((e) => toast(e.message, true))));
   $('#rquick').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $('#rf').value = ymd(Date.now() - Number(b.dataset.r) * 864e5); $('#rt').value = today; load(); };
@@ -881,7 +1032,7 @@ async function renderRecords() {
 
 /* ================= Staff (admin) ================= */
 async function renderStaff() {
-  const users = await api('/api/users');
+  const [users, offices] = await Promise.all([api('/api/users'), api('/api/offices')]);
   shell(`
     ${pageHead('Staff', `${users.filter((u) => u.active).length} akaun aktif`, `<button class="btn primary" id="news">${ICON.plus}<span>Tambah staff</span></button>`)}
     <div class="staff-grid">
@@ -892,7 +1043,19 @@ async function renderStaff() {
         <div class="sc-a">${u.phone ? `<a class="btn icon" href="tel:${esc(u.phone.replace(/\s/g, ''))}" aria-label="Telefon ${esc(u.name)}">${ICON.phone}</a>` : ''}<button class="btn" data-u="${u.id}">Urus</button></div>
       </div>`).join('')}
     </div>
-    <p class="muted small" style="margin:0">Staff log masuk dengan username & kata laluan yang anda tetapkan. Hanya admin boleh urus staff dan padam projek.</p>`);
+    <p class="muted small" style="margin:0">Staff log masuk dengan username & kata laluan yang anda tetapkan. Hanya admin boleh urus staff dan padam projek.</p>
+    <section class="stack">
+      <div class="section-head"><div><h2>Lokasi pejabat</h2><p class="muted small">Staff hanya boleh punch in / out dalam kawasan lokasi ini.</p></div>
+        <button class="btn" id="newo">${ICON.plus}<span>Tambah lokasi</span></button></div>
+      <div class="office-grid">${offices.map((o) => `<div class="card office-card">
+        <div class="oc-ic">${ICON.pin}</div>
+        <div class="oc-b"><b>${esc(o.name)}</b>
+          <small>${o.lat != null ? `<a class="mono" href="${mapLink(o.lat, o.lng)}" target="_blank" rel="noopener">${o.lat.toFixed(5)}, ${o.lng.toFixed(5)}</a> · radius ${o.radius_m} m` : '<span class="txt-bad">Lokasi belum ditetapkan</span>'}</small></div>
+        <button class="btn" data-o="${o.id}">Edit</button></div>`).join('')}</div>
+      ${IS_DEMO() ? '<div class="notice">' + ICON.alert + '<span>Koordinat di atas ialah <b>contoh</b>. Pergi ke setiap lokasi, tekan <b>Edit → Guna lokasi saya sekarang</b>, dan simpan.</span></div>' : ''}
+    </section>`);
+  $('#newo').onclick = () => officeForm();
+  $$('[data-o]').forEach((b) => (b.onclick = () => officeForm(offices.find((o) => o.id === Number(b.dataset.o)), offices.length)));
   $('#news').onclick = () => staffForm();
   $$('[data-u]').forEach((b) => (b.onclick = () => staffForm(users.find((u) => u.id === Number(b.dataset.u)))));
 }
@@ -925,6 +1088,46 @@ function staffForm(u = null) {
       closeModal(); toast('Staff disimpan');
       if (currentRoute() === 'staff') renderStaff(); else router();
     }); };
+  });
+}
+
+function officeForm(o = null, count = 0) {
+  openModal(`
+    <div class="modal-head"><div><div class="eyebrow">Lokasi punch</div><h2>${o ? esc(o.name) : 'Tambah lokasi'}</h2></div><button class="btn icon ghost" data-close aria-label="Tutup">${ICON.x}</button></div>
+    <form id="of" class="form">
+      <div class="fsec">
+        <label class="f">Nama lokasi *<input id="of-name" required value="${esc(o?.name)}" placeholder="cth: Pejabat AJC"></label>
+      </div>
+      <div class="fsec">
+        <div class="fsec-h">${ICON.gps}Koordinat GPS</div>
+        <p class="muted small" style="margin:0">Paling tepat: berdiri di lokasi ini dan tekan butang di bawah.</p>
+        <button type="button" class="btn" id="of-here">${ICON.pin}<span>Guna lokasi saya sekarang</span></button>
+        <div class="grid2">
+          <label class="f">Latitude<input id="of-lat" inputmode="decimal" value="${o?.lat ?? ''}" placeholder="3.0000"></label>
+          <label class="f">Longitude<input id="of-lng" inputmode="decimal" value="${o?.lng ?? ''}" placeholder="101.000"></label>
+        </div>
+        <label class="f">Radius kawasan (meter)<span class="hint">Staff dalam jarak ini dikira berada di lokasi. Cadangan: 100–200 m.</span>
+          <input id="of-rad" type="number" inputmode="numeric" min="30" max="2000" value="${o?.radius_m ?? 150}"></label>
+      </div>
+      <div class="modal-foot">
+        ${o && count > 1 ? `<button type="button" class="btn danger" id="of-del">${ICON.trash}<span>Padam</span></button>` : '<button type="button" class="btn" data-close>Batal</button>'}
+        <button class="btn primary" id="of-save">${ICON.check}<span>Simpan</span></button>
+      </div>
+    </form>`, () => {
+    $('#of-here').onclick = (e) => busy(e.currentTarget, async () => {
+      const pos = await getPosition();
+      $('#of-lat').value = pos.lat.toFixed(6); $('#of-lng').value = pos.lng.toFixed(6);
+      toast(`Lokasi dikesan (±${pos.acc} m)`);
+    });
+    $('#of').onsubmit = (e) => { e.preventDefault(); busy($('#of-save'), async () => {
+      const body = { name: $('#of-name').value, lat: $('#of-lat').value, lng: $('#of-lng').value, radius_m: $('#of-rad').value };
+      if (o) await api(`/api/offices/${o.id}`, { method: 'PATCH', body }); else await api('/api/offices', { body });
+      closeModal(); toast('Lokasi pejabat disimpan'); renderStaff();
+    }); };
+    if ($('#of-del')) $('#of-del').onclick = async () => {
+      if (!(await confirmBox('Padam lokasi ini?', `Staff tidak lagi boleh punch di "${o.name}".`, 'Padam lokasi'))) return;
+      try { await api(`/api/offices/${o.id}`, { method: 'DELETE' }); toast('Lokasi dipadam'); renderStaff(); } catch (err) { toast(err.message, true); }
+    };
   });
 }
 

@@ -27,11 +27,18 @@ Ia dibuka di telefon dan boleh "Add to Home Screen" supaya nampak seperti app.
 - Kongsi senarai ukuran ke **WhatsApp** (umum atau terus ke pelanggan), atau salin teks.
 - Helaian ukuran A4 untuk bengkel (butang Cetak). Butang Waze, Maps dan Telefon pelanggan.
 
-**Punch in / punch out dengan GPS**
-- Butang besar; kad bertukar hijau bila sedang bertugas.
-- Skrin pengesahan dengan getaran telefon.
-- Jarak dari tapak disemak. Jika lebih dari radius, rekod ditanda **luar kawasan** dan admin akan nampak.
-- Rekod dengan penapis Hari ini / 7 hari / 30 hari, ringkasan jam setiap staff, dan muat turun CSV (Excel).
+**Punch in / punch out (lapor diri di pejabat)**
+- Staff lapor diri di pejabat dahulu, jadi punch in **dan** punch out hanya diterima di lokasi pejabat yang ditetapkan admin: **Pejabat AJC** dan **Rumah Owner**.
+- Setiap punch mesti lulus semua semakan ini:
+  1. **GPS / Location mesti dihidupkan.** Jika dimatikan atau kebenaran ditolak, punch tidak boleh dibuat.
+  2. **Tiada VPN.** Sambungan melalui VPN, proxy, Tor, IP pusat data atau IP luar Malaysia ditolak.
+  3. **Dalam radius pejabat** (tiada toleransi). Isyarat GPS yang terlalu lemah (lebih ±200 m) juga ditolak.
+  4. **Selfie wajib**, diambil dengan kamera langsung. Masa, tarikh, nama pejabat dan nama staff dicop pada gambar.
+- Admin boleh lihat selfie masuk / keluar dalam Rekod dan dashboard, berserta IP & rangkaian (dalam CSV).
+- Dashboard menunjukkan staff yang **belum lapor diri** hari ini, dengan butang telefon.
+- Lokasi pejabat diurus di menu **Staff → Lokasi pejabat**: pergi ke lokasi, tekan *Guna lokasi saya sekarang*, dan tetapkan radius.
+
+> **Nota had teknikal:** semakan VPN dalam mod demo dibuat dari browser menggunakan servis ipapi.is. Bila disambung ke Supabase, semakan ini patut dibuat di server (berdasarkan IP permintaan), supaya tidak boleh dielak. Aplikasi web tidak dapat mengesan app "fake GPS" pada telefon. Selfie berserta cop masa dan lokasi membantu admin semak secara visual.
 
 **Lain-lain**
 - Urus staff (admin): tambah staff, reset kata laluan, nyahaktif akaun, tukar peranan.

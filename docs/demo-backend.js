@@ -4,7 +4,7 @@
    hanya fail ini yang perlu diganti. */
 'use strict';
 (function () {
-  const KEY = 'ajc_demo_db_v2';
+  const KEY = 'ajc_demo_db_v3';
   const SESSION = 'ajc_demo_session';
   const STATUSES = ['ukur', 'fabrikasi', 'pasang', 'siap'];
 
@@ -33,7 +33,13 @@
       return new Date(`${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+08:00`).toISOString();
     };
     const ago = (mins) => new Date(Date.now() - mins * 6e4).toISOString();
-    const db = { seq: { users: 4, projects: 4, measurements: 13, attendance: 8 }, photos: {}, users: [
+    const db = { seq: { users: 4, projects: 4, measurements: 13, attendance: 8, offices: 2 }, photos: {},
+    // Lokasi punch in / out. Koordinat contoh — admin tetapkan lokasi sebenar di menu Staff → Lokasi pejabat.
+    offices: [
+      { id: 1, name: 'Pejabat AJC', lat: 2.9937, lng: 101.7873, radius_m: 150 },
+      { id: 2, name: 'Rumah Owner', lat: 3.0005, lng: 101.7771, radius_m: 100 },
+    ],
+    users: [
       { id: 1, username: 'admin', name: 'Pentadbir AJC', phone: '', role: 'admin', pass: hash('ajc12345'), active: true, created_at: now() },
       { id: 2, username: 'ali', name: 'Ali bin Ahmad', phone: '013-111 2222', role: 'staff', pass: hash('ali123'), active: true, created_at: now() },
       { id: 3, username: 'faiz', name: 'Faiz Hakimi', phone: '017-333 4444', role: 'staff', pass: hash('faiz123'), active: true, created_at: now() },
@@ -67,17 +73,17 @@
       ({ id, project_id, location, item_type, width_mm, height_mm, qty, panels, glass, frame_color, notes, photo: null, measured_by: id % 3 === 0 ? 3 : 2,
         created_at: id > 9 ? t(1, 10, id) : id < 6 ? ago(300 - id * 40) : t(2, 11, id), updated_at: id > 9 ? t(1, 10, id) : id < 6 ? ago(300 - id * 40) : t(2, 11, id) })),
     attendance: [
-      [1, 2, 1, t(1, 8, 2), t(1, 17, 35), 2.9935, 101.7875, 16, true],
-      [2, 3, 1, t(1, 8, 15), t(1, 17, 30), 2.9934, 101.7877, 25, true],
-      [3, 2, 2, t(2, 8, 5), t(2, 18, 0), 2.9926, 101.7908, 15, true],
-      [4, 3, 2, t(2, 9, 40), t(2, 17, 0), 3.0012, 101.7701, 2060, false],
-      [5, 2, null, t(3, 8, 30), t(3, 17, 10), 2.9900, 101.7800, null, null],
-      [6, 3, null, t(3, 8, 45), t(3, 17, 5), 2.9901, 101.7801, null, null],
-      [7, 3, 2, ago(170), null, 2.9928, 101.7911, 22, true],
-      [8, 4, 4, ago(215), null, 3.0731, 101.5183, 25, true],
-    ].map(([id, user_id, project_id, in_at, out_at, lat, lng, dist, ok]) => ({ id, user_id, project_id, in_at, in_lat: lat, in_lng: lng, in_acc: 12,
-      in_dist_m: dist, in_ok: ok, out_at, out_lat: out_at ? lat : null, out_lng: out_at ? lng : null, out_acc: out_at ? 10 : null,
-      out_dist_m: out_at ? dist : null, out_ok: out_at ? ok : null, note: '' })) };
+      [1, 2, 1, t(1, 8, 2), t(1, 17, 35), 2.9935, 101.7875, 28],
+      [2, 3, 1, t(1, 8, 15), t(1, 17, 30), 2.9934, 101.7877, 55],
+      [3, 4, 2, t(1, 8, 20), t(1, 17, 40), 3.0006, 101.7772, 15],
+      [4, 2, 1, t(2, 8, 5), t(2, 18, 0), 2.9938, 101.7874, 16],
+      [5, 3, 2, t(2, 7, 55), t(2, 17, 0), 3.0004, 101.7770, 15],
+      [6, 4, 1, t(2, 8, 30), t(2, 17, 10), 2.9936, 101.7872, 15],
+      [7, 3, 1, ago(170), null, 2.9938, 101.7871, 24],
+      [8, 4, 2, ago(215), null, 3.0005, 101.7772, 11],
+    ].map(([id, user_id, office_id, in_at, out_at, lat, lng, dist]) => ({ id, user_id, office_id, project_id: null, in_at, in_lat: lat, in_lng: lng, in_acc: 12,
+      in_dist_m: dist, in_ok: true, out_at, out_lat: out_at ? lat : null, out_lng: out_at ? lng : null, out_acc: out_at ? 10 : null,
+      out_dist_m: out_at ? dist : null, out_ok: out_at ? true : null, note: '' })) };
     return db;
   }
 
@@ -85,7 +91,7 @@
   function load() {
     if (db) return db;
     try { db = JSON.parse(ls.get(KEY)); } catch { db = null; }
-    if (!db || !db.users) { db = seed(); save(); }
+    if (!db || !db.users || !db.offices) { db = seed(); save(); }
     return db;
   }
   function save() {
@@ -132,13 +138,39 @@
     if (!(m.width_mm > 0 && m.width_mm < 20000) || !(m.height_mm > 0 && m.height_mm < 20000)) throw new ApiError(400, 'Lebar dan tinggi mesti antara 1 – 20000 mm');
     return m;
   }
-  function geoCheck(pid, lat, lng) {
-    if (!pid) return { dist: null, ok: null };
-    const p = db.projects.find((x) => x.id === pid);
-    if (!p) throw new ApiError(404, 'Projek tidak dijumpai');
-    if (p.lat == null || p.lng == null) return { dist: null, ok: null };
-    const dist = Math.round(haversine(lat, lng, p.lat, p.lng));
-    return { dist, ok: dist <= p.radius_m };
+  // Cari pejabat terdekat. Punch hanya sah jika staff berada DALAM radius pejabat (tiada toleransi).
+  const MAX_ACC = 200; // ketepatan GPS lebih teruk dari ini ditolak
+  function officeCheck(lat, lng, acc) {
+    const list = db.offices.filter((o) => o.lat != null && o.lng != null);
+    if (!list.length) throw new ApiError(400, 'Lokasi pejabat belum ditetapkan. Sila hubungi admin.');
+    if (acc != null && acc > MAX_ACC) { const e = new ApiError(400, `Isyarat GPS terlalu lemah (±${Math.round(acc)} m). Tunggu sebentar atau keluar dari bangunan, kemudian cuba lagi.`); e.code = 'WEAK_GPS'; throw e; }
+    const [best] = list.map((o) => ({ o, d: Math.round(haversine(lat, lng, o.lat, o.lng)) })).sort((a, b) => a.d - b.d);
+    return { office: best.o, dist: best.d, ok: best.d <= best.o.radius_m };
+  }
+  // Sistem sebenar: semakan VPN dibuat di server berdasarkan IP permintaan. Demo: guna keputusan semakan dari browser.
+  function needNet(b) {
+    const n = b.net || {};
+    if (n.ok !== true) { const e = new ApiError(403, 'Rangkaian tidak disahkan atau VPN dikesan. Matikan VPN dan cuba lagi.'); e.code = 'VPN'; throw e; }
+    return { ip: str(n.ip, 60), isp: str(n.isp, 120), country: str(n.country, 4) };
+  }
+  function needSelfie(b) {
+    if (!/^data:image\/(jpeg|png|webp);base64,/.test(b.selfie || '')) throw new ApiError(400, 'Selfie diperlukan untuk punch.');
+    if (b.selfie.length > 400000) throw new ApiError(400, 'Gambar selfie terlalu besar.');
+    return savePhoto(b.selfie);
+  }
+  function outsideError(kind, g) {
+    const e = new ApiError(403, `Anda berada ${g.dist.toLocaleString('en-MY')} m dari ${g.office.name}. Punch ${kind} hanya boleh dibuat di pejabat.`);
+    e.code = 'OUTSIDE'; e.office = g.office.name; e.dist = g.dist;
+    return e;
+  }
+  const officeName = (id) => db.offices.find((o) => o.id === id)?.name ?? null;
+  function officeFields(b, old = {}) {
+    const pick = (k, f) => (b[k] !== undefined ? f(b[k]) : old[k]);
+    const o = { name: pick('name', (v) => str(v, 80)), lat: pick('lat', num) ?? null, lng: pick('lng', num) ?? null,
+      radius_m: pick('radius_m', (v) => Math.max(30, Math.min(2000, num(v) || 150))) ?? 150 };
+    if (!o.name) throw new ApiError(400, 'Nama lokasi diperlukan');
+    if ((o.lat == null) !== (o.lng == null) || (o.lat != null && (Math.abs(o.lat) > 90 || Math.abs(o.lng) > 180))) throw new ApiError(400, 'Latitude dan longitude tidak sah');
+    return o;
   }
   function needCoords(b) {
     const lat = num(b.lat), lng = num(b.lng);
@@ -148,14 +180,14 @@
   const projectName = (id) => db.projects.find((p) => p.id === id)?.name ?? null;
   const openShift = (uid) => {
     const a = db.attendance.filter((x) => x.user_id === uid && !x.out_at).sort((x, y) => (x.in_at < y.in_at ? 1 : -1))[0];
-    return a ? { ...a, project_name: projectName(a.project_id) } : null;
+    return a ? { ...a, office_name: officeName(a.office_id), project_name: projectName(a.project_id) } : null;
   };
   function attendanceRows(u, q) {
     let uid = num(q.user_id); if (u.role !== 'admin') uid = u.id;
     return db.attendance
       .filter((a) => (uid == null || a.user_id === uid) && (!q.from || a.in_at >= q.from) && (!q.to || a.in_at < q.to))
       .sort((x, y) => (x.in_at < y.in_at ? 1 : -1))
-      .map((a) => ({ ...a, user_name: userById(a.user_id)?.name, project_name: projectName(a.project_id),
+      .map((a) => ({ ...a, user_name: userById(a.user_id)?.name, office_name: officeName(a.office_id), project_name: projectName(a.project_id),
         hours: a.out_at ? (new Date(a.out_at) - new Date(a.in_at)) / 36e5 : null }));
   }
 
@@ -257,22 +289,39 @@
     ['GET', /^\/api\/attendance\/status$/, true, (b, u) => ({ open: openShift(u.id) })],
     ['POST', /^\/api\/attendance\/in$/, true, (b, u) => {
       if (openShift(u.id)) throw new ApiError(400, 'Anda sudah punch in. Sila punch out dahulu.');
-      const { lat, lng, acc } = needCoords(b); const pid = num(b.project_id); const g = geoCheck(pid, lat, lng);
-      db.attendance.push({ id: nextId('attendance'), user_id: u.id, project_id: pid, in_at: now(), in_lat: lat, in_lng: lng, in_acc: acc, in_dist_m: g.dist, in_ok: g.ok,
-        out_at: null, out_lat: null, out_lng: null, out_acc: null, out_dist_m: null, out_ok: null, note: str(b.note, 300) });
-      save(); return { open: openShift(u.id), dist: g.dist, ok: g.ok };
+      const { lat, lng, acc } = needCoords(b); const g = officeCheck(lat, lng, acc);
+      const net = needNet(b);
+      if (!g.ok) throw outsideError('in', g);
+      const selfie = needSelfie(b);
+      db.attendance.push({ id: nextId('attendance'), user_id: u.id, office_id: g.office.id, project_id: null, in_at: now(), in_lat: lat, in_lng: lng, in_acc: acc, in_selfie: selfie, in_net: net,
+        in_dist_m: g.dist, in_ok: g.ok, out_at: null, out_lat: null, out_lng: null, out_acc: null, out_dist_m: null, out_ok: null, note: str(b.note, 300) });
+      save(); return { open: openShift(u.id), dist: g.dist, ok: g.ok, office_name: g.office?.name ?? null };
     }],
     ['POST', /^\/api\/attendance\/out$/, true, (b, u) => {
       const s = openShift(u.id); if (!s) throw new ApiError(400, 'Anda belum punch in.');
-      const { lat, lng, acc } = needCoords(b); const g = geoCheck(s.project_id, lat, lng);
-      Object.assign(db.attendance.find((x) => x.id === s.id), { out_at: now(), out_lat: lat, out_lng: lng, out_acc: acc, out_dist_m: g.dist, out_ok: g.ok });
-      save(); return { ok: true, dist: g.dist, inside: g.ok };
+      const { lat, lng, acc } = needCoords(b); const g = officeCheck(lat, lng, acc);
+      const net = needNet(b);
+      if (!g.ok) throw outsideError('out', g);
+      const selfie = needSelfie(b);
+      Object.assign(db.attendance.find((x) => x.id === s.id), { out_at: now(), out_lat: lat, out_lng: lng, out_acc: acc, out_dist_m: g.dist, out_ok: g.ok, out_office_id: g.office.id, out_selfie: selfie, out_net: net });
+      save(); return { ok: true, dist: g.dist, inside: g.ok, office_name: g.office?.name ?? null };
     }],
     ['GET', /^\/api\/attendance$/, true, (b, u, m, q) => attendanceRows(u, q)],
+    ['GET', /^\/api\/offices$/, true, () => db.offices],
+    ['POST', /^\/api\/offices$/, true, (b, u) => {
+      requireAdmin(u); const id = nextId('offices'); db.offices.push({ id, ...officeFields(b) }); save(); return { id };
+    }],
+    ['PATCH', /^\/api\/offices\/(\d+)$/, true, (b, u, [id]) => {
+      requireAdmin(u); const o = db.offices.find((x) => x.id === Number(id)); if (!o) throw new ApiError(404, 'Lokasi tidak dijumpai');
+      Object.assign(o, officeFields(b, o)); save(); return { ok: true };
+    }],
+    ['DELETE', /^\/api\/offices\/(\d+)$/, true, (b, u, [id]) => {
+      requireAdmin(u); if (db.offices.length <= 1) throw new ApiError(400, 'Sekurang-kurangnya satu lokasi pejabat diperlukan');
+      db.offices = db.offices.filter((x) => x.id !== Number(id)); save(); return { ok: true };
+    }],
     // Ringkasan untuk dashboard admin
     ['GET', /^\/api\/dashboard$/, true, (b, u) => {
       requireAdmin(u);
-      const since7 = new Date(Date.now() - 7 * 864e5).toISOString();
       const area = (pid) => db.measurements.filter((x) => x.project_id === pid).reduce((a, x) => a + (x.width_mm * x.height_mm * x.qty) / 1e6, 0);
       const projects = [...db.projects].sort((x, y) => (x.updated_at < y.updated_at ? 1 : -1))
         .map((p) => ({ id: p.id, code: p.code, name: p.name, client: p.client, status: p.status, updated_at: p.updated_at,
@@ -282,18 +331,25 @@
         ...db.measurements.map((m) => ({ type: 'measure', at: m.updated_at, user_name: userById(m.measured_by)?.name, project_id: m.project_id,
           project_name: projectName(m.project_id), text: `${m.item_type} ${m.width_mm} × ${m.height_mm} mm`, sub: m.location })),
         ...db.attendance.flatMap((a) => [
-          { type: 'in', at: a.in_at, user_name: userById(a.user_id)?.name, project_id: a.project_id, project_name: projectName(a.project_id), ok: a.in_ok, dist: a.in_dist_m },
-          ...(a.out_at ? [{ type: 'out', at: a.out_at, user_name: userById(a.user_id)?.name, project_id: a.project_id, project_name: projectName(a.project_id), ok: a.out_ok, dist: a.out_dist_m }] : []),
+          { type: 'in', at: a.in_at, user_name: userById(a.user_id)?.name, place: officeName(a.office_id) },
+          ...(a.out_at ? [{ type: 'out', at: a.out_at, user_name: userById(a.user_id)?.name, place: officeName(a.out_office_id ?? a.office_id) }] : []),
         ]),
       ].filter((f) => f.at <= now()).sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 8);
       return {
         staff_total: db.users.filter((x) => x.active).length,
         on_duty: db.attendance.filter((a) => !a.out_at).sort((x, y) => (x.in_at < y.in_at ? -1 : 1))
-          .map((a) => ({ user_id: a.user_id, user_name: userById(a.user_id)?.name, project_id: a.project_id, project_name: projectName(a.project_id), in_at: a.in_at, in_ok: a.in_ok, in_dist_m: a.in_dist_m })),
+          .map((a) => ({ user_id: a.user_id, user_name: userById(a.user_id)?.name, office_name: officeName(a.office_id), in_at: a.in_at, in_ok: a.in_ok, in_dist_m: a.in_dist_m, in_selfie: a.in_selfie || null })),
+        // staff aktif yang belum punch in hari ini (waktu Malaysia)
+        not_in_today: (() => {
+          const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+          const start = new Date(`${day}T00:00:00+08:00`).toISOString();
+          const inToday = new Set(db.attendance.filter((a) => a.in_at >= start).map((a) => a.user_id));
+          return db.users.filter((x) => x.active && x.role === 'staff' && !inToday.has(x.id)).map((x) => ({ user_id: x.id, user_name: x.name, phone: x.phone }));
+        })(),
+        staff_count: db.users.filter((x) => x.active && x.role === 'staff').length,
         by_status: Object.fromEntries(STATUSES.map((st) => [st, projects.filter((p) => p.status === st)])),
         active_projects: active.length,
         active_area_m2: active.reduce((a, p) => a + p.area_m2, 0),
-        gps_alerts_7d: db.attendance.filter((a) => a.in_at >= since7 && (a.in_ok === false || a.out_ok === false)).length,
         feed,
       };
     }],

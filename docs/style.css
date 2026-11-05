@@ -525,6 +525,49 @@ details.fsec[open] summary::after { content: "−"; }
 .switch > span:last-child { display: grid; }
 .switch small { color: var(--muted); font-size: .78rem; }
 
+/* ================= Pejabat & selfie ================= */
+.hero-offices { margin-top: 18px; display: grid; gap: 8px; justify-items: center; text-align: center; }
+.hero-offices .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; opacity: .75; font-weight: 650; }
+.office-chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.office-chips .glass svg { width: 14px; height: 14px; }
+.loc-off { margin-top: 12px; display: flex; gap: 10px; align-items: flex-start; background: rgba(255, 196, 92, .16); border: 1px solid rgba(255, 196, 92, .45); color: #ffe2ad; border-radius: 14px; padding: 10px 12px; font-size: .8rem; }
+.loc-off svg { width: 18px; height: 18px; margin-top: 1px; }
+.loc-off b { color: #fff; }
+.kpi.k-warn .kpi-ic { background: var(--warn-bg); color: var(--warn); }
+.kpi.k-warn .kpi-v { color: var(--warn); }
+.absent { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.absent .eyebrow { color: var(--warn); margin-bottom: 4px; }
+.avatar.dim { background: #cbd5e1; color: #475569; }
+img.avatar.selfie-av { object-fit: cover; cursor: zoom-in; box-shadow: 0 0 0 2px var(--ok-bg), 0 0 0 3px var(--ok); background: #e2e8f0; }
+.office-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.office-card { display: flex; align-items: center; gap: 14px; }
+.oc-ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: #e8f1fb; color: var(--brand); flex: none; }
+.oc-ic svg { width: 22px; height: 22px; }
+.oc-b { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.oc-b small { font-size: .76rem; color: var(--muted); overflow-wrap: anywhere; }
+.oc-b small a { color: var(--muted); text-decoration: underline; text-decoration-color: #cbd5e1; }
+.section-head .muted.small { margin-top: 2px; }
+
+.rec { grid-template-areas: "day what hrs" "sf sf sf"; }
+.rec .day { grid-area: day; } .rec .what { grid-area: what; } .rec .hrs { grid-area: hrs; }
+.selfies { grid-area: sf; display: flex; gap: 10px; padding-top: 10px; margin-top: -2px; border-top: 1px solid #eef1f6; }
+.selfies figure { margin: 0; display: grid; gap: 3px; justify-items: center; }
+.selfies img { width: 54px; height: 72px; object-fit: cover; border-radius: 10px; cursor: zoom-in; background: #e2e8f0; box-shadow: var(--sh-1); }
+.selfies figcaption { font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+.cam { position: relative; width: min(100%, 360px); aspect-ratio: 3 / 4; margin: 0 auto; border-radius: 22px; overflow: hidden; background: #0b1622; }
+.cam video, .cam #cam-shot { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam video { transform: scaleX(-1); }
+.cam-guide { position: absolute; left: 50%; top: 42%; width: 62%; aspect-ratio: 3 / 4; transform: translate(-50%, -50%); border-radius: 50%;
+  border: 3px dashed rgba(255, 255, 255, .75); box-shadow: 0 0 0 999px rgba(11, 22, 34, .35); pointer-events: none; }
+.cam-msg { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 20px; text-align: center; color: #fff; font-size: .88rem; font-weight: 600; background: #0b1622; }
+.cam-tip { text-align: center; margin: -4px auto 0; max-width: 34ch; }
+.cam-actions { display: grid; place-items: center; padding: 2px 0 4px; }
+.shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid var(--brand); background: #fff; display: grid; place-items: center; cursor: pointer; padding: 0; transition: transform .12s; }
+.shutter span { width: 58px; height: 58px; border-radius: 50%; background: linear-gradient(180deg, var(--brand-2), var(--brand)); }
+.shutter:active { transform: scale(.92); }
+.shutter:disabled { opacity: .4; cursor: wait; }
+
 /* ================= Maklum balas ================= */
 #toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(100px + env(safe-area-inset-bottom, 0px)); z-index: 100; background: var(--navy); color: #fff;
   padding: 12px 18px; border-radius: 14px; font-weight: 600; font-size: .9rem; max-width: calc(100vw - 32px); box-shadow: 0 14px 34px -10px rgba(0, 0, 0, .45); }
@@ -541,7 +584,7 @@ details.fsec[open] summary::after { content: "−"; }
 .done.out { opacity: 0; transition: opacity .2s; }
 @media (prefers-reduced-motion: no-preference) {
   .done-card { animation: pop .35s var(--ease); }
-  .done-ic svg path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw .45s .15s var(--ease) forwards; }
+  .done:not(.warn) .done-ic svg path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw .45s .15s var(--ease) forwards; }
   @keyframes draw { to { stroke-dashoffset: 0; } }
   main > * { animation: rise .32s var(--ease) both; }
   main > *:nth-child(2) { animation-delay: .03s; } main > *:nth-child(3) { animation-delay: .06s; } main > *:nth-child(4) { animation-delay: .09s; }
