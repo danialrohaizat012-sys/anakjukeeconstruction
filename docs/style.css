@@ -180,4 +180,9 @@ dialog::backdrop { background: rgba(14, 30, 50, .5); }
   th, td { padding: 5px 6px; white-space: normal; }
   th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+/* Mod demo */
+.demo-bar { background: var(--warn-bg); color: var(--warn); font-weight: 600; font-size: .82rem; text-align: center;
+  padding: 6px max(16px, env(safe-area-inset-right, 0px)) 6px max(16px, env(safe-area-inset-left, 0px)); }
+.demo-hint { background: var(--warn-bg); color: #6b3b00; border-radius: 8px; padding: 10px 12px; font-size: .88rem; line-height: 1.6; }
+.linkbtn { appearance: none; border: 0; background: none; padding: 0; color: var(--blue-deep); font: 600 .88rem var(--f-mono); text-decoration: underline; cursor: pointer; }
 @media (prefers-reduced-motion: no-preference) { .btn, .chip, .proj { transition: border-color .15s, background .15s; } }

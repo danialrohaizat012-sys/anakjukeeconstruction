@@ -1,68 +1,61 @@
 # AJC Construction: Sistem Tapak
 
-Sistem dalaman AJC Construction (aluminium & kaca). Ia buka di telefon staff, dan boleh "Add to Home Screen" supaya nampak seperti app.
+Sistem dalaman AJC Construction (aluminium & kaca) untuk:
+- **ukuran tapak**, menggantikan buku ukur
+- **punch in / out staff dengan GPS**
+
+Ia dibuka di telefon dan boleh "Add to Home Screen" supaya nampak seperti app.
+
+> **Status: MOD DEMO.** Data disimpan dalam browser peranti masing-masing (localStorage) sahaja. Ia tidak dikongsi antara telefon, dan hilang jika data browser dipadam. Untuk kegunaan sebenar, sambung ke Supabase. Lihat bahagian [Sambung database](#sambung-database-nanti).
 
 ## Fungsi
 
-**1. Ukuran tapak (ganti buku ukur)**
+**1. Ukuran tapak**
 - Satu rekod untuk setiap projek: pelanggan, telefon, alamat dan status (Ukur → Fabrikasi → Pasang → Siap).
-- Setiap bukaan direkod dengan lokasi, jenis item, **lebar × tinggi (mm)**, kuantiti, bilangan panel, jenis kaca, warna frame, nota dan gambar tapak.
+- Setiap bukaan direkod dengan lokasi, jenis item, **lebar × tinggi (mm)**, kuantiti, bilangan panel, jenis kaca, warna frame, nota dan gambar.
 - Lakaran bukaan dibuat automatik, siap dengan garisan dimensi. Keluasan kaca (m²) dikira sendiri.
-- Carian merentas semua projek, contohnya "shower", nama pelanggan atau alamat.
-- Butang **Cetak** mengeluarkan helaian ukuran A4 untuk bengkel / fabrikasi.
+- Carian merentas semua projek.
+- Butang **Cetak** mengeluarkan helaian ukuran A4.
 - Butang Waze / Google Maps ke tapak.
 
 **2. Punch in / punch out dengan GPS**
 - Staff pilih tapak dan tekan **Punch In**. Lokasi GPS dan ketepatannya direkod.
-- Sistem kira jarak dari tapak. Kalau jarak melebihi radius (default 200 m), rekod ditanda merah **"luar kawasan"**.
-- Admin boleh lihat kehadiran semua staff, jumlah jam setiap staff dan pautan peta untuk setiap punch. Data boleh dimuat turun sebagai CSV (dibuka dengan Excel).
+- Jika jarak dari tapak melebihi radius (default 200 m), rekod ditanda merah **"luar kawasan"**.
+- Admin boleh lihat rekod semua staff dan jumlah jam setiap staff, serta muat turun CSV (Excel).
 
-**3. Pengurusan staff (admin)**: tambah staff, reset kata laluan dan nyahaktif akaun.
+**3. Urus staff (admin)**: tambah staff, reset kata laluan dan nyahaktif akaun.
 
-## Deploy ke Vercel
+## Akaun demo
 
-Vercel tiada storan fail kekal, jadi semua data (termasuk gambar) disimpan dalam **database Postgres**.
-
-1. Di Vercel, pilih **Add New → Project** dan import repo ini. Framework preset: **Other**. Tak perlu ubah tetapan build.
-2. Di projek Vercel, buka tab **Storage → Create Database → Neon (Postgres)**. Pelan percuma sudah cukup. Sambungkan database itu ke projek ini. Vercel akan tambah `DATABASE_URL` secara automatik.
-3. (Disyorkan) Di **Settings → Environment Variables**, tambah `ADMIN_PASSWORD` dengan kata laluan admin pertama anda.
-4. **Redeploy**, kemudian buka `https://<nama-projek>.vercel.app`. Jadual database dicipta sendiri pada permintaan pertama.
-5. Log masuk dengan username `admin` dan kata laluan dari langkah 3 (default `ajc12345` jika tidak ditetapkan). **Tukar kata laluan segera** di menu Akaun.
-
-Domain sendiri, contohnya `tapak.ajcconstruction.my`, boleh ditambah di **Settings → Domains**. HTTPS disediakan automatik, dan GPS telefon memang wajib guna HTTPS.
-
-### Environment variables
-
-| Nama | Wajib | Guna |
+| Peranan | Username | Kata laluan |
 |---|---|---|
-| `DATABASE_URL` | Ya | Sambungan Postgres (Neon / Supabase / lain-lain). `POSTGRES_URL` juga diterima |
-| `ADMIN_PASSWORD` | Disyorkan | Kata laluan akaun admin pertama (hanya digunakan sekali) |
+| Admin | `admin` | `ajc12345` |
+| Staff | `ali` | `ali123` |
+| Staff | `faiz` | `faiz123` |
 
-## Jalankan di komputer sendiri
+Untuk kembali kepada data contoh, buka menu **Akaun → Reset data demo**.
 
-Perlu Node.js 20+ dan satu database Postgres.
+## Hidupkan di GitHub Pages
 
-```bash
-npm install
-DATABASE_URL=postgres://user:pass@localhost:5432/ajc npm run dev
-```
+1. Di repo GitHub, buka **Settings → Pages**.
+2. Bahagian **Build and deployment**: pilih Source **Deploy from a branch**, Branch **`main`**, dan folder **`/docs`**. Tekan **Save**.
+3. Tunggu 1–2 minit. Sistem akan live di:
+   **https://danialrohaizat012-sys.github.io/anakjukeeconstruction/**
 
-Kemudian buka `http://localhost:3000`.
+Setiap kali kod dipush ke `main`, laman akan dikemas kini sendiri.
+
+## Sambung database (nanti)
+
+Semua akses data melalui satu fail: `docs/demo-backend.js`. Fail ini menyediakan `AJCBackend.request(method, path, body)` dengan laluan API yang sama seperti backend sebenar (`/api/projects`, `/api/attendance/in` dan lain-lain).
+
+Untuk guna Supabase, gantikan fail ini dengan versi yang memanggil Supabase. Bahagian lain aplikasi (`app.js`) tidak perlu diubah.
 
 ## Struktur
 
 ```
-api/index.js     Vercel Function: semua /api/* dihalakan ke sini
-lib/app.js       Logik API + schema database
-server.js        Server untuk local / VPS (static + API)
-public/          Frontend (HTML/CSS/JS, logo, ikon PWA)
-vercel.json      Tetapan Vercel
-```
-
-## Backup
-
-Neon ada fungsi backup / point-in-time restore. Untuk salinan sendiri:
-
-```bash
-pg_dump "$DATABASE_URL" > backup-ajc.sql
+docs/index.html         Halaman utama
+docs/app.js             Antara muka (skrin, borang, lakaran ukuran)
+docs/demo-backend.js    Lapisan data — DEMO (localStorage)
+docs/style.css          Gaya / branding AJC
+docs/logo.png, icon-*   Logo & ikon app
 ```

@@ -39,16 +39,27 @@ const ICON = {
 
 /* ---------- API ---------- */
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    method: opts.method || (opts.body ? 'POST' : 'GET'),
-    headers: opts.body ? { 'Content-Type': 'application/json' } : {},
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-    credentials: 'same-origin',
-  });
-  let data = null; try { data = await res.json(); } catch {}
-  if (res.status === 401 && path !== '/api/login') { state.me = null; renderLogin(); throw new Error('Sila log masuk semula'); }
-  if (!res.ok) throw new Error((data && data.error) || `Ralat ${res.status}`);
-  return data;
+  const method = opts.method || (opts.body ? 'POST' : 'GET');
+  try {
+    return await window.AJCBackend.request(method, path, opts.body);
+  } catch (e) {
+    if (e.status === 401 && path !== '/api/login') { state.me = null; renderLogin(); throw new Error('Sila log masuk semula'); }
+    throw e;
+  }
+}
+const IS_DEMO = () => window.AJCBackend && window.AJCBackend.mode === 'demo';
+// Gambar dimuat selepas render (backend demo simpan gambar dalam storan peranti)
+async function hydratePhotos(root = document) {
+  for (const img of $$('img[data-photo]', root)) {
+    const id = img.dataset.photo; img.removeAttribute('data-photo');
+    try { img.src = await api(`/api/photos/${encodeURIComponent(id)}`); img.hidden = false; } catch { img.alt = 'Gambar tidak dijumpai'; }
+  }
+}
+function downloadText(filename, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(link); link.click(); link.parentNode.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 function toast(msg, bad = false) {
   const t = $('#toast'); t.textContent = msg; t.className = bad ? 'bad' : ''; t.hidden = false;
@@ -99,7 +110,7 @@ function resizeImage(file, max = 1600) {
       const s = Math.min(1, max / Math.max(img.width, img.height));
       const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.82));
+      URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', max <= 1000 ? 0.7 : 0.82));
     };
     img.onerror = () => reject(new Error('Gambar tidak dapat dibaca'));
     img.src = url;
@@ -158,10 +169,11 @@ function tabsHtml() {
 function shell(content) {
   $('#app').innerHTML = `
     <header class="topbar"><div class="topbar-in">
-      <a href="#punch" aria-label="Laman utama"><img src="/logo.png" alt="AJC Construction"></a>
+      <a href="#punch" aria-label="Laman utama"><img src="logo.png" alt="AJC Construction"></a>
       ${tabsHtml()}
       <div class="who"><b>${esc(state.me.name)}</b><span class="muted">${state.me.role === 'admin' ? 'Admin' : 'Staff'}</span></div>
     </div></header>
+    ${IS_DEMO() ? '<div class="demo-bar">Mod demo · data disimpan dalam peranti ini sahaja</div>' : ''}
     <main id="main">${content}</main>
     <div class="tabbar">${tabsHtml()}</div>`;
 }
@@ -184,13 +196,15 @@ window.addEventListener('hashchange', router);
 /* ---------- Login ---------- */
 function renderLogin() {
   $('#app').innerHTML = `<div class="login"><form id="lf" autocomplete="on">
-    <img src="/logo.png" alt="AJC Construction">
+    <img src="logo.png" alt="AJC Construction">
     <div class="eyebrow" style="text-align:center">Sistem Tapak · Ukuran & Kehadiran</div>
     <label class="f">Username<input id="lu" name="username" autocomplete="username" autocapitalize="none" required></label>
     <label class="f">Kata laluan<input id="lp" name="password" type="password" autocomplete="current-password" required></label>
     <div class="err" id="le" hidden></div>
+    ${IS_DEMO() ? `<div class="demo-hint"><b>Mod demo.</b> Cuba log masuk sebagai:<br><button type="button" class="linkbtn" data-demo="admin|ajc12345">admin / ajc12345</button> (admin) · <button type="button" class="linkbtn" data-demo="ali|ali123">ali / ali123</button> (staff)</div>` : ''}
     <button class="btn primary" style="justify-content:center">Log masuk</button>
   </form></div>`;
+  $$('[data-demo]').forEach((b) => (b.onclick = () => { const [u, pw] = b.dataset.demo.split('|'); $('#lu').value = u; $('#lp').value = pw; }));
   $('#lf').onsubmit = async (e) => {
     e.preventDefault();
     const btn = $('#lf button');
@@ -342,7 +356,7 @@ async function renderProject(id) {
   shell(`
     <div class="no-print"><a href="#projek" class="btn ghost" style="padding-left:0">${ICON.back}Semua projek</a></div>
     <section class="card stack">
-      <div class="print-only"><img src="/logo.png" alt="AJC Construction" style="height:44px"><h2 style="margin-top:8px">Helaian Ukuran Tapak</h2></div>
+      <div class="print-only"><img src="logo.png" alt="AJC Construction" style="height:44px"><h2 style="margin-top:8px">Helaian Ukuran Tapak</h2></div>
       <div class="row between" style="align-items:flex-start">
         <div style="min-width:0"><div class="eyebrow mono">${esc(p.code)}</div><h1>${esc(p.name)}</h1></div>
         <select id="pstatus" class="no-print" style="width:auto">${Object.entries(STATUS).map(([k, l]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -380,7 +394,7 @@ async function renderProject(id) {
             <div class="tags">${m.panels ? `<span class="tag">${m.panels} panel</span>` : ''}${m.glass ? `<span class="tag">${esc(m.glass)}</span>` : ''}${m.frame_color ? `<span class="tag">Frame: ${esc(m.frame_color)}</span>` : ''}
               <span class="tag mono">${fmtNum((m.width_mm * m.height_mm * m.qty) / 1e6, 2)} m²</span></div>
             ${m.notes ? `<div class="small">${esc(m.notes)}</div>` : ''}
-            <div class="row" style="gap:10px">${m.photo ? `<img class="thumb" src="/api/photos/${esc(m.photo)}" alt="Gambar ${esc(m.location)}" data-zoom="/api/photos/${esc(m.photo)}">` : ''}
+            <div class="row" style="gap:10px">${m.photo ? `<img class="thumb" data-photo="${esc(m.photo)}" alt="Gambar ${esc(m.location)}" data-zoom>` : ''}
               <span class="muted small">Diukur oleh ${esc(m.measured_by_name || '—')} · ${fmtDateTime(m.updated_at)}</span></div>
           </div>
         </article>`).join('') : '<div class="empty"><h3>Belum ada ukuran</h3>Tekan <b>Tambah ukuran</b> dan masukkan lebar × tinggi dalam milimeter.</div>'}
@@ -391,6 +405,7 @@ async function renderProject(id) {
       <tr><td colspan="5"><b>Jumlah</b></td><td class="num"><b>${units}</b></td><td colspan="3"></td><td class="num mono"><b>${fmtNum(area, 2)}</b></td><td></td></tr>
     </tbody></table><p class="small">Dicetak ${fmtDateTime(new Date().toISOString())} · Disemak oleh: ____________________</p></div>`);
 
+  hydratePhotos($('#main'));
   $('#pstatus').onchange = async (e) => { try { await api(`/api/projects/${id}`, { method: 'PATCH', body: { status: e.target.value } }); toast(`Status: ${STATUS[e.target.value]}`); renderProject(id); } catch (err) { toast(err.message, true); } };
   $('#pedit').onclick = () => projectForm(p);
   $('#pprint').onclick = () => window.print();
@@ -402,7 +417,7 @@ async function renderProject(id) {
   $('#main').addEventListener('click', async (e) => {
     const ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]'), z = e.target.closest('[data-zoom]');
     if (ed) measurementForm(p.id, ms.find((m) => m.id === Number(ed.dataset.edit)));
-    if (z) openModal(`<div class="modal-head"><h2>Gambar</h2><button class="btn ghost" data-close aria-label="Tutup">✕</button></div><img src="${z.dataset.zoom}" alt="">`);
+    if (z) openModal(`<div class="modal-head"><h2>Gambar</h2><button class="btn ghost" data-close aria-label="Tutup">✕</button></div><img src="${z.src}" alt="">`);
     if (del) {
       const m = ms.find((x) => x.id === Number(del.dataset.del));
       if (!(await confirmBox('Padam ukuran?', `${m.location} — ${m.width_mm} × ${m.height_mm} mm`))) return;
@@ -442,7 +457,7 @@ function measurementForm(projectId, m = null) {
         <span class="f" style="font-weight:600;font-size:.9rem">Gambar tapak</span>
         <div class="row"><input id="mf-photo" type="file" accept="image/*" capture="environment">
           ${m?.photo ? '<button type="button" class="btn danger" id="mf-rmphoto">Buang gambar</button>' : ''}</div>
-        <img id="mf-prev" alt="" style="max-height:160px;width:auto;border-radius:8px" ${m?.photo ? `src="/api/photos/${esc(m.photo)}"` : 'hidden'}>
+        <img id="mf-prev" alt="" style="max-height:160px;width:auto;border-radius:8px" ${m?.photo ? `data-photo="${esc(m.photo)}"` : 'hidden'}>
       </div>
       <div class="modal-foot">
         ${m ? '' : '<button type="button" class="btn" id="mf-more">Simpan & tambah lagi</button>'}
@@ -456,10 +471,11 @@ function measurementForm(projectId, m = null) {
         $('#mf-area').innerHTML = `${fmtNum((w * h) / 1e6, 3)} m² / unit<br><b>${fmtNum((w * h * q) / 1e6, 2)} m² jumlah</b>`;
       } else { $('#mf-dwg').innerHTML = ''; $('#mf-area').textContent = 'Masukkan lebar & tinggi dalam mm'; }
     };
+    hydratePhotos($('#modal'));
     ['#mf-w', '#mf-h', '#mf-qty', '#mf-pan', '#mf-type'].forEach((s) => $(s).addEventListener('input', upd)); upd();
     $('#mf-photo').onchange = async (e) => {
       const f = e.target.files[0]; if (!f) return;
-      try { photo = await resizeImage(f); $('#mf-prev').src = photo; $('#mf-prev').hidden = false; } catch (err) { toast(err.message, true); }
+      try { photo = await resizeImage(f, IS_DEMO() ? 1000 : 1600); $('#mf-prev').src = photo; $('#mf-prev').hidden = false; } catch (err) { toast(err.message, true); }
     };
     if ($('#mf-rmphoto')) $('#mf-rmphoto').onclick = () => { photo = null; $('#mf-prev').hidden = true; $('#mf-photo').value = ''; };
     const save = async (again) => {
@@ -496,7 +512,7 @@ async function renderRecords() {
       <label class="f" style="flex:1 1 140px">Dari<input id="rf" type="date" value="${from}"></label>
       <label class="f" style="flex:1 1 140px">Hingga<input id="rt" type="date" value="${to}"></label>
       ${isAdmin ? `<label class="f" style="flex:2 1 200px">Staff<select id="ru"><option value="">Semua staff</option>${users.map((u) => `<option value="${u.id}" ${String(u.id) === uid ? 'selected' : ''}>${esc(u.name)}${u.active ? '' : ' (tidak aktif)'}</option>`).join('')}</select></label>` : ''}
-      <a class="btn" id="rcsv">${ICON.dl}Excel (CSV)</a>
+      <button type="button" class="btn" id="rcsv">${ICON.dl}Excel (CSV)</button>
     </section>
     <div id="rsum"></div>
     <div id="rtbl"></div>`);
@@ -507,8 +523,16 @@ async function renderRecords() {
     if (f) qs.set('from', new Date(`${f}T00:00:00+08:00`).toISOString());
     if (t) qs.set('to', new Date(new Date(`${t}T00:00:00+08:00`).getTime() + 864e5).toISOString());
     if (u) qs.set('user_id', u);
-    $('#rcsv').href = `/api/attendance.csv?${qs}`;
     const rows = await api(`/api/attendance?${qs}`);
+    $('#rcsv').onclick = () => {
+      const c = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const dt = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: TZ, hour12: false }) : '');
+      const yn = (v) => (v == null ? '' : v ? 'Ya' : 'Tidak');
+      const head = ['Staff', 'Projek', 'Masuk', 'Keluar', 'Jam', 'Lokasi masuk', 'Jarak masuk (m)', 'Dalam kawasan (masuk)', 'Lokasi keluar', 'Jarak keluar (m)', 'Dalam kawasan (keluar)', 'Nota'];
+      const lines = [head.map(c).join(',')].concat(rows.map((r) => [r.user_name, r.project_name || 'Bengkel / Pejabat', dt(r.in_at), dt(r.out_at), r.hours != null ? r.hours.toFixed(2) : '',
+        r.in_lat != null ? `${r.in_lat},${r.in_lng}` : '', r.in_dist_m, yn(r.in_ok), r.out_lat != null ? `${r.out_lat},${r.out_lng}` : '', r.out_dist_m, yn(r.out_ok), r.note].map(c).join(',')));
+      downloadText(`kehadiran-ajc-${f}-hingga-${t}.csv`, '\ufeff' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+    };
     const total = rows.reduce((a, r) => a + (r.hours || 0), 0);
     const outside = rows.filter((r) => r.in_ok === false || r.out_ok === false).length;
     const per = {}; rows.forEach((r) => { per[r.user_name] = per[r.user_name] || { h: 0, d: new Set() }; per[r.user_name].h += r.hours || 0; per[r.user_name].d.add(ymd(r.in_at)); });
@@ -583,11 +607,16 @@ function renderAccount() {
       <label class="f">Kata laluan baru<input id="cp-new" type="password" autocomplete="new-password" minlength="6" required></label>
       <div><button class="btn primary">Tukar kata laluan</button></div>
     </form>
-    <div><button class="btn danger" id="logout">Log keluar</button></div>`);
+    <div><button class="btn danger" id="logout">Log keluar</button></div>
+    ${IS_DEMO() ? `<section class="card stack"><h2>Data demo</h2><p class="muted small" style="margin:0">Data demo hanya disimpan dalam browser peranti ini. Reset akan memadam semua perubahan dan memulihkan data contoh.</p><div><button class="btn" id="demo-reset">Reset data demo</button></div></section>` : ''}`);
   $('#cp').onsubmit = (e) => { e.preventDefault(); busy($('#cp button'), async () => {
     await api('/api/me/password', { body: { current: $('#cp-cur').value, next: $('#cp-new').value } });
     $('#cp').reset(); toast('Kata laluan ditukar');
   }); };
+  if ($('#demo-reset')) $('#demo-reset').onclick = async () => {
+    if (!(await confirmBox('Reset data demo?', 'Semua projek, ukuran dan rekod kehadiran dalam peranti ini akan kembali kepada data contoh.', 'Reset'))) return;
+    window.AJCBackend.reset(); state.me = null; location.hash = ''; renderLogin(); toast('Data demo direset');
+  };
   $('#logout').onclick = async () => { await api('/api/logout', { body: {} }).catch(() => {}); state.me = null; location.hash = ''; renderLogin(); };
 }
 
