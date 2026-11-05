@@ -19,47 +19,50 @@ Sistem dalaman AJC Construction (aluminium & kaca). Ia buka di telefon staff, da
 
 **3. Pengurusan staff (admin)**: tambah staff, reset kata laluan dan nyahaktif akaun.
 
-## Jalankan
+## Deploy ke Vercel
 
-Perlu **Node.js 22.13 atau lebih baru**. Tiada library lain diperlukan.
+Vercel tiada storan fail kekal, jadi semua data (termasuk gambar) disimpan dalam **database Postgres**.
 
-```bash
-npm start
-```
+1. Di Vercel, pilih **Add New → Project** dan import repo ini. Framework preset: **Other**. Tak perlu ubah tetapan build.
+2. Di projek Vercel, buka tab **Storage → Create Database → Neon (Postgres)**. Pelan percuma sudah cukup. Sambungkan database itu ke projek ini. Vercel akan tambah `DATABASE_URL` secara automatik.
+3. (Disyorkan) Di **Settings → Environment Variables**, tambah `ADMIN_PASSWORD` dengan kata laluan admin pertama anda.
+4. **Redeploy**, kemudian buka `https://<nama-projek>.vercel.app`. Jadual database dicipta sendiri pada permintaan pertama.
+5. Log masuk dengan username `admin` dan kata laluan dari langkah 3 (default `ajc12345` jika tidak ditetapkan). **Tukar kata laluan segera** di menu Akaun.
 
-Buka `http://localhost:3000`. Pada kali pertama, akaun admin dicipta secara automatik:
+Domain sendiri, contohnya `tapak.ajcconstruction.my`, boleh ditambah di **Settings → Domains**. HTTPS disediakan automatik, dan GPS telefon memang wajib guna HTTPS.
 
-- username: `admin`
-- password: `ajc12345` (**tukar segera** di menu Akaun)
+### Environment variables
 
-Untuk tetapkan password admin awal sendiri:
-
-```bash
-ADMIN_PASSWORD=rahsia123 npm start
-```
-
-Tetapan (environment variable):
-
-| Nama | Default | Guna |
+| Nama | Wajib | Guna |
 |---|---|---|
-| `PORT` | `3000` | Port server |
-| `DATA_DIR` | `./data` | Lokasi database (`ajc.db`) dan gambar (`uploads/`) |
-| `ADMIN_PASSWORD` | `ajc12345` | Password admin pertama sahaja |
-| `SECURE_COOKIE` | (kosong) | Letak `1` bila guna HTTPS |
+| `DATABASE_URL` | Ya | Sambungan Postgres (Neon / Supabase / lain-lain). `POSTGRES_URL` juga diterima |
+| `ADMIN_PASSWORD` | Disyorkan | Kata laluan akaun admin pertama (hanya digunakan sekali) |
 
-## Penting: GPS perlukan HTTPS
+## Jalankan di komputer sendiri
 
-Pelayar telefon **hanya benarkan GPS di laman HTTPS**. Jadi sistem ini mesti di-host dengan domain HTTPS, contohnya `https://tapak.ajcconstruction.my`. Pilihan mudah:
+Perlu Node.js 20+ dan satu database Postgres.
 
-- **VPS** (DigitalOcean, Vultr, Exabytes, ~RM20–30/bulan) dengan Caddy, yang buat HTTPS automatik:
-  ```
-  tapak.ajcconstruction.my {
-      reverse_proxy localhost:3000
-  }
-  ```
-  Jalankan `npm start` di bawah `pm2` atau `systemd` supaya server hidup semula selepas restart.
-- **Railway / Render / Fly.io**: deploy terus dari GitHub, dan HTTPS disediakan. Pastikan ada *persistent volume* untuk folder `data/`, kalau tidak database akan hilang setiap kali deploy.
+```bash
+npm install
+DATABASE_URL=postgres://user:pass@localhost:5432/ajc npm run dev
+```
+
+Kemudian buka `http://localhost:3000`.
+
+## Struktur
+
+```
+api/index.js     Vercel Function: semua /api/* dihalakan ke sini
+lib/app.js       Logik API + schema database
+server.js        Server untuk local / VPS (static + API)
+public/          Frontend (HTML/CSS/JS, logo, ikon PWA)
+vercel.json      Tetapan Vercel
+```
 
 ## Backup
 
-Semua data ada dalam folder `data/`. Salin folder ini setiap hari (contohnya ke Google Drive) sebagai backup.
+Neon ada fungsi backup / point-in-time restore. Untuk salinan sendiri:
+
+```bash
+pg_dump "$DATABASE_URL" > backup-ajc.sql
+```

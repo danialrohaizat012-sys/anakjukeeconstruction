@@ -250,11 +250,11 @@ async function renderPunch() {
     $('#gps').textContent = `Lokasi dikesan (ketepatan ±${pos.acc} m)`;
     if (open) {
       const r = await api('/api/attendance/out', { body: pos });
-      toast(r.inside === 0 ? `Punch out direkod — ${fmtNum(r.dist)} m dari tapak` : 'Punch out berjaya. Terima kasih!');
+      toast(r.inside === false ? `Punch out direkod — ${fmtNum(r.dist)} m dari tapak` : 'Punch out berjaya. Terima kasih!');
     } else {
       const pid = $('#pproj').value; store.set('ajc_last_project', pid);
       const r = await api('/api/attendance/in', { body: { ...pos, project_id: pid || null } });
-      toast(r.ok === 0 ? `Punch in direkod — AMARAN: ${fmtNum(r.dist)} m dari tapak` : 'Punch in berjaya. Selamat bekerja!', r.ok === 0);
+      toast(r.ok === false ? `Punch in direkod — AMARAN: ${fmtNum(r.dist)} m dari tapak` : 'Punch in berjaya. Selamat bekerja!', r.ok === false);
     }
     renderPunch();
   });
@@ -380,7 +380,7 @@ async function renderProject(id) {
             <div class="tags">${m.panels ? `<span class="tag">${m.panels} panel</span>` : ''}${m.glass ? `<span class="tag">${esc(m.glass)}</span>` : ''}${m.frame_color ? `<span class="tag">Frame: ${esc(m.frame_color)}</span>` : ''}
               <span class="tag mono">${fmtNum((m.width_mm * m.height_mm * m.qty) / 1e6, 2)} m²</span></div>
             ${m.notes ? `<div class="small">${esc(m.notes)}</div>` : ''}
-            <div class="row" style="gap:10px">${m.photo ? `<img class="thumb" src="/uploads/${esc(m.photo)}" alt="Gambar ${esc(m.location)}" data-zoom="/uploads/${esc(m.photo)}">` : ''}
+            <div class="row" style="gap:10px">${m.photo ? `<img class="thumb" src="/api/photos/${esc(m.photo)}" alt="Gambar ${esc(m.location)}" data-zoom="/api/photos/${esc(m.photo)}">` : ''}
               <span class="muted small">Diukur oleh ${esc(m.measured_by_name || '—')} · ${fmtDateTime(m.updated_at)}</span></div>
           </div>
         </article>`).join('') : '<div class="empty"><h3>Belum ada ukuran</h3>Tekan <b>Tambah ukuran</b> dan masukkan lebar × tinggi dalam milimeter.</div>'}
@@ -442,7 +442,7 @@ function measurementForm(projectId, m = null) {
         <span class="f" style="font-weight:600;font-size:.9rem">Gambar tapak</span>
         <div class="row"><input id="mf-photo" type="file" accept="image/*" capture="environment">
           ${m?.photo ? '<button type="button" class="btn danger" id="mf-rmphoto">Buang gambar</button>' : ''}</div>
-        <img id="mf-prev" alt="" style="max-height:160px;width:auto;border-radius:8px" ${m?.photo ? `src="/uploads/${esc(m.photo)}"` : 'hidden'}>
+        <img id="mf-prev" alt="" style="max-height:160px;width:auto;border-radius:8px" ${m?.photo ? `src="/api/photos/${esc(m.photo)}"` : 'hidden'}>
       </div>
       <div class="modal-foot">
         ${m ? '' : '<button type="button" class="btn" id="mf-more">Simpan & tambah lagi</button>'}
@@ -510,7 +510,7 @@ async function renderRecords() {
     $('#rcsv').href = `/api/attendance.csv?${qs}`;
     const rows = await api(`/api/attendance?${qs}`);
     const total = rows.reduce((a, r) => a + (r.hours || 0), 0);
-    const outside = rows.filter((r) => r.in_ok === 0 || r.out_ok === 0).length;
+    const outside = rows.filter((r) => r.in_ok === false || r.out_ok === false).length;
     const per = {}; rows.forEach((r) => { per[r.user_name] = per[r.user_name] || { h: 0, d: new Set() }; per[r.user_name].h += r.hours || 0; per[r.user_name].d.add(ymd(r.in_at)); });
     $('#rsum').innerHTML = `<div class="stats"><div><div class="eyebrow">Rekod</div><div class="v">${rows.length}</div></div>
       <div><div class="eyebrow">Jumlah jam</div><div class="v">${fmtHours(total)}</div></div>
