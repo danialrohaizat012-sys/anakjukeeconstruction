@@ -4,7 +4,7 @@
    hanya fail ini yang perlu diganti. */
 'use strict';
 (function () {
-  const KEY = 'ajc_demo_db_v1';
+  const KEY = 'ajc_demo_db_v2';
   const SESSION = 'ajc_demo_session';
   const STATUSES = ['ukur', 'fabrikasi', 'pasang', 'siap'];
 
@@ -27,11 +27,17 @@
 
   /* ---------- Data contoh ---------- */
   function seed() {
-    const t = (daysAgo, h, m) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.toISOString(); };
-    const db = { seq: { users: 3, projects: 3, measurements: 9, attendance: 6 }, photos: {}, users: [
+    // Masa contoh dalam waktu Malaysia (UTC+8), tanpa mengira zon waktu peranti
+    const t = (daysAgo, h, m) => {
+      const day = new Date(Date.now() - daysAgo * 864e5).toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+      return new Date(`${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+08:00`).toISOString();
+    };
+    const ago = (mins) => new Date(Date.now() - mins * 6e4).toISOString();
+    const db = { seq: { users: 4, projects: 4, measurements: 13, attendance: 8 }, photos: {}, users: [
       { id: 1, username: 'admin', name: 'Pentadbir AJC', phone: '', role: 'admin', pass: hash('ajc12345'), active: true, created_at: now() },
       { id: 2, username: 'ali', name: 'Ali bin Ahmad', phone: '013-111 2222', role: 'staff', pass: hash('ali123'), active: true, created_at: now() },
       { id: 3, username: 'faiz', name: 'Faiz Hakimi', phone: '017-333 4444', role: 'staff', pass: hash('faiz123'), active: true, created_at: now() },
+      { id: 4, username: 'zul', name: 'Zulkifli Hassan', phone: '011-555 6666', role: 'staff', pass: hash('zul123'), active: true, created_at: now() },
     ], projects: [
       { id: 1, code: 'AJC-2026-001', name: 'Rumah Teres En. Hafiz, Seksyen 9 Bangi', client: 'Hafiz Rahman', phone: '012-345 6789',
         address: 'No. 12, Jalan 9/3, Seksyen 9, 43650 Bandar Baru Bangi', lat: 2.9936, lng: 101.7876, radius_m: 200, status: 'ukur',
@@ -40,6 +46,9 @@
         lat: 2.9927, lng: 101.7909, radius_m: 150, status: 'fabrikasi', notes: 'Contoh demo.', created_by: 1, created_at: t(8, 9, 0), updated_at: t(2, 15, 0) },
       { id: 3, code: 'AJC-2026-003', name: 'Banglo Dr. Aminah, Putrajaya', client: 'Dr. Aminah', phone: '', address: 'Presint 16, Putrajaya',
         lat: null, lng: null, radius_m: 200, status: 'siap', notes: 'Contoh demo.', created_by: 1, created_at: t(30, 9, 0), updated_at: t(10, 17, 0) },
+      { id: 4, code: 'AJC-2026-004', name: 'Pejabat Tetuan Rahim & Co, Shah Alam', client: 'Tetuan Rahim & Co', phone: '03-5511 2233',
+        address: 'Tingkat 3, Plaza Seksyen 13, 40100 Shah Alam', lat: 3.0733, lng: 101.5185, radius_m: 200, status: 'pasang',
+        notes: 'Contoh demo. Pemasangan partition kaca bilik mesyuarat.', created_by: 1, created_at: t(14, 9, 0), updated_at: t(1, 16, 20) },
     ], measurements: [
       [1, 1, 'Ruang tamu – pintu ke laman', 'Pintu Sliding', 2400, 2100, 1, 2, 'Tempered 10mm', 'Hitam', 'Lantai tak rata 5mm sebelah kiri'],
       [2, 1, 'Bilik air utama', 'Shower Screen', 1200, 1900, 1, 2, 'Tempered 10mm', 'Silver / Natural', ''],
@@ -50,8 +59,13 @@
       [7, 2, 'Tingkap sisi', 'Panel Tetap (Fixed)', 1500, 1200, 2, 1, 'Tempered 10mm', 'Hitam', ''],
       [8, 3, 'Ruang tamu', 'Pintu Sliding', 3000, 2400, 1, 3, 'Laminated 8.38mm', 'Champagne', ''],
       [9, 3, 'Bilik utama', 'Tingkap Sliding', 1800, 1500, 2, 2, 'Reflective 6mm', 'Champagne', ''],
+      [10, 4, 'Bilik mesyuarat', 'Partition Kaca', 4200, 2700, 1, 4, 'Tempered 12mm', 'Hitam', 'Frameless, pintu swing di tengah'],
+      [11, 4, 'Bilik mesyuarat – pintu', 'Pintu Swing', 900, 2100, 1, 1, 'Tempered 12mm', 'Hitam', 'Patch fitting'],
+      [12, 4, 'Bilik pengarah', 'Partition Kaca', 3000, 2700, 1, 3, 'Frosted 6mm', 'Hitam', ''],
+      [13, 4, 'Pantri', 'Tingkap Top Hung', 900, 600, 2, 1, 'Clear 6mm', 'Hitam', ''],
     ].map(([id, project_id, location, item_type, width_mm, height_mm, qty, panels, glass, frame_color, notes]) =>
-      ({ id, project_id, location, item_type, width_mm, height_mm, qty, panels, glass, frame_color, notes, photo: null, measured_by: 2, created_at: t(2, 11, id), updated_at: t(2, 11, id) })),
+      ({ id, project_id, location, item_type, width_mm, height_mm, qty, panels, glass, frame_color, notes, photo: null, measured_by: id % 3 === 0 ? 3 : 2,
+        created_at: id > 9 ? t(1, 10, id) : id < 6 ? ago(300 - id * 40) : t(2, 11, id), updated_at: id > 9 ? t(1, 10, id) : id < 6 ? ago(300 - id * 40) : t(2, 11, id) })),
     attendance: [
       [1, 2, 1, t(1, 8, 2), t(1, 17, 35), 2.9935, 101.7875, 16, true],
       [2, 3, 1, t(1, 8, 15), t(1, 17, 30), 2.9934, 101.7877, 25, true],
@@ -59,8 +73,11 @@
       [4, 3, 2, t(2, 9, 40), t(2, 17, 0), 3.0012, 101.7701, 2060, false],
       [5, 2, null, t(3, 8, 30), t(3, 17, 10), 2.9900, 101.7800, null, null],
       [6, 3, null, t(3, 8, 45), t(3, 17, 5), 2.9901, 101.7801, null, null],
+      [7, 3, 2, ago(170), null, 2.9928, 101.7911, 22, true],
+      [8, 4, 4, ago(215), null, 3.0731, 101.5183, 25, true],
     ].map(([id, user_id, project_id, in_at, out_at, lat, lng, dist, ok]) => ({ id, user_id, project_id, in_at, in_lat: lat, in_lng: lng, in_acc: 12,
-      in_dist_m: dist, in_ok: ok, out_at, out_lat: lat, out_lng: lng, out_acc: 10, out_dist_m: dist, out_ok: ok, note: '' })) };
+      in_dist_m: dist, in_ok: ok, out_at, out_lat: out_at ? lat : null, out_lng: out_at ? lng : null, out_acc: out_at ? 10 : null,
+      out_dist_m: out_at ? dist : null, out_ok: out_at ? ok : null, note: '' })) };
     return db;
   }
 
@@ -252,6 +269,34 @@
       save(); return { ok: true, dist: g.dist, inside: g.ok };
     }],
     ['GET', /^\/api\/attendance$/, true, (b, u, m, q) => attendanceRows(u, q)],
+    // Ringkasan untuk dashboard admin
+    ['GET', /^\/api\/dashboard$/, true, (b, u) => {
+      requireAdmin(u);
+      const since7 = new Date(Date.now() - 7 * 864e5).toISOString();
+      const area = (pid) => db.measurements.filter((x) => x.project_id === pid).reduce((a, x) => a + (x.width_mm * x.height_mm * x.qty) / 1e6, 0);
+      const projects = [...db.projects].sort((x, y) => (x.updated_at < y.updated_at ? 1 : -1))
+        .map((p) => ({ id: p.id, code: p.code, name: p.name, client: p.client, status: p.status, updated_at: p.updated_at,
+          item_count: db.measurements.filter((x) => x.project_id === p.id).length, area_m2: area(p.id) }));
+      const active = projects.filter((p) => p.status !== 'siap');
+      const feed = [
+        ...db.measurements.map((m) => ({ type: 'measure', at: m.updated_at, user_name: userById(m.measured_by)?.name, project_id: m.project_id,
+          project_name: projectName(m.project_id), text: `${m.item_type} ${m.width_mm} × ${m.height_mm} mm`, sub: m.location })),
+        ...db.attendance.flatMap((a) => [
+          { type: 'in', at: a.in_at, user_name: userById(a.user_id)?.name, project_id: a.project_id, project_name: projectName(a.project_id), ok: a.in_ok, dist: a.in_dist_m },
+          ...(a.out_at ? [{ type: 'out', at: a.out_at, user_name: userById(a.user_id)?.name, project_id: a.project_id, project_name: projectName(a.project_id), ok: a.out_ok, dist: a.out_dist_m }] : []),
+        ]),
+      ].filter((f) => f.at <= now()).sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 8);
+      return {
+        staff_total: db.users.filter((x) => x.active).length,
+        on_duty: db.attendance.filter((a) => !a.out_at).sort((x, y) => (x.in_at < y.in_at ? -1 : 1))
+          .map((a) => ({ user_id: a.user_id, user_name: userById(a.user_id)?.name, project_id: a.project_id, project_name: projectName(a.project_id), in_at: a.in_at, in_ok: a.in_ok, in_dist_m: a.in_dist_m })),
+        by_status: Object.fromEntries(STATUSES.map((st) => [st, projects.filter((p) => p.status === st)])),
+        active_projects: active.length,
+        active_area_m2: active.reduce((a, p) => a + p.area_m2, 0),
+        gps_alerts_7d: db.attendance.filter((a) => a.in_at >= since7 && (a.in_ok === false || a.out_ok === false)).length,
+        feed,
+      };
+    }],
   ];
 
   async function request(method, path, body = {}) {

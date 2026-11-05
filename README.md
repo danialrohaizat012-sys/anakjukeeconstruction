@@ -10,20 +10,33 @@ Ia dibuka di telefon dan boleh "Add to Home Screen" supaya nampak seperti app.
 
 ## Fungsi
 
-**1. Ukuran tapak**
-- Satu rekod untuk setiap projek: pelanggan, telefon, alamat dan status (Ukur → Fabrikasi → Pasang → Siap).
-- Setiap bukaan direkod dengan lokasi, jenis item, **lebar × tinggi (mm)**, kuantiti, bilangan panel, jenis kaca, warna frame, nota dan gambar.
-- Lakaran bukaan dibuat automatik, siap dengan garisan dimensi. Keluasan kaca (m²) dikira sendiri.
-- Carian merentas semua projek.
-- Butang **Cetak** mengeluarkan helaian ukuran A4.
-- Butang Waze / Google Maps ke tapak.
+**Dashboard admin (Utama)**
+- Siapa sedang bertugas sekarang, lokasi tapak dan status GPS.
+- Aliran projek: Ukur → Fabrikasi → Pasang → Siap.
+- Jumlah kaca (m²) dalam proses dan amaran GPS 7 hari.
+- Suapan aktiviti terkini (ukuran baru, punch in/out).
 
-**2. Punch in / punch out dengan GPS**
-- Staff pilih tapak dan tekan **Punch In**. Lokasi GPS dan ketepatannya direkod.
-- Jika jarak dari tapak melebihi radius (default 200 m), rekod ditanda merah **"luar kawasan"**.
-- Admin boleh lihat rekod semua staff dan jumlah jam setiap staff, serta muat turun CSV (Excel).
+**Ukuran tapak (ganti buku ukur)**
+- Pilih jenis item guna jubin bergambar.
+- Lebar × tinggi dalam **mm**, dengan penukaran automatik ke **kaki-inci**.
+- Amaran jika saiz nampak salah unit (contohnya dimasukkan dalam cm).
+- Kuantiti dan panel guna butang − / +. Chip pilihan cepat untuk lokasi, jenis kaca dan warna frame.
+- Lakaran bukaan automatik dengan garisan dimensi. Gambar tapak dari kamera.
+- "Simpan & tambah lagi" mengekalkan jenis, kaca dan frame untuk bukaan seterusnya.
+- Tab **Ringkasan**: pesanan kaca ikut jenis kaca, jenis item dan warna frame (unit & m²).
+- Kongsi senarai ukuran ke **WhatsApp** (umum atau terus ke pelanggan), atau salin teks.
+- Helaian ukuran A4 untuk bengkel (butang Cetak). Butang Waze, Maps dan Telefon pelanggan.
 
-**3. Urus staff (admin)**: tambah staff, reset kata laluan dan nyahaktif akaun.
+**Punch in / punch out dengan GPS**
+- Butang besar; kad bertukar hijau bila sedang bertugas.
+- Skrin pengesahan dengan getaran telefon.
+- Jarak dari tapak disemak. Jika lebih dari radius, rekod ditanda **luar kawasan** dan admin akan nampak.
+- Rekod dengan penapis Hari ini / 7 hari / 30 hari, ringkasan jam setiap staff, dan muat turun CSV (Excel).
+
+**Lain-lain**
+- Urus staff (admin): tambah staff, reset kata laluan, nyahaktif akaun, tukar peranan.
+- Boleh dipasang di telefon (PWA) dan dibuka **tanpa internet**.
+- Paparan telefon: bottom nav. Paparan desktop pejabat: sidebar.
 
 ## Akaun demo
 
@@ -32,6 +45,7 @@ Ia dibuka di telefon dan boleh "Add to Home Screen" supaya nampak seperti app.
 | Admin | `admin` | `ajc12345` |
 | Staff | `ali` | `ali123` |
 | Staff | `faiz` | `faiz123` |
+| Staff | `zul` | `zul123` |
 
 Untuk kembali kepada data contoh, buka menu **Akaun → Reset data demo**.
 
@@ -57,5 +71,6 @@ docs/index.html         Halaman utama
 docs/app.js             Antara muka (skrin, borang, lakaran ukuran)
 docs/demo-backend.js    Lapisan data — DEMO (localStorage)
 docs/style.css          Gaya / branding AJC
+docs/sw.js              Service worker (offline)
 docs/logo.png, icon-*   Logo & ikon app
 ```
