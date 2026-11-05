@@ -1,0 +1,9 @@
+{
+  "name": "ajc-sistem-tapak",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AJC Construction — sistem dalaman ukuran tapak & kehadiran GPS",
+  "main": "server.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": { "start": "node --no-warnings server.js" }
+}
