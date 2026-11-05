@@ -57,6 +57,11 @@ function distM(lat1, lng1, lat2, lng2) {
   const a = Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lng2 - lng1) / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
+const nearestOffice = (offices, pos) => offices.filter((o) => o.lat != null)
+  .map((o) => ({ o, d: Math.round(distM(pos.lat, pos.lng, o.lat, o.lng)) })).sort((a, b) => a.d - b.d)[0] || null;
+const fmtDist = (m) => (m >= 1000 ? `${fmtNum(m / 1000, 1)} km` : `${fmtNum(m)} m`);
+const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 // No. telefon Malaysia → format wa.me (cth: 012-345 6789 → 60123456789)
 const waNumber = (phone) => { let d = String(phone || '').replace(/\D/g, ''); if (d.startsWith('0')) d = '6' + d; return d.length >= 10 ? d : ''; };
 
@@ -272,7 +277,7 @@ const pageHead = (title, sub, actions = '') => `<div class="page-head"><div clas
 const emptyBox = (icon, title, text) => `<div class="empty"><div class="ill">${icon}</div><h3>${title}</h3><p>${text}</p></div>`;
 const avatar = (name, cls = '') => `<span class="avatar ${cls}" aria-hidden="true">${esc(initials(name))}</span>`;
 const placeName = (r) => r.office_name || r.project_name || 'Pejabat';
-const steps = (status) => `<div class="steps s${STEP[status]}" aria-label="Status: ${STATUS[status]}"><i></i><i></i><i></i><i></i></div>`;
+const steps = (status) => `<div class="steps s${STEP[status]}" role="img" aria-label="Status: ${STATUS[status]}"><i></i><i></i><i></i><i></i></div>`;
 const skeleton = () => `<div class="sk sk-h"></div><div class="sk-row"><div class="sk sk-tile"></div><div class="sk sk-tile"></div><div class="sk sk-tile"></div></div><div class="sk sk-card"></div><div class="sk sk-card"></div>`;
 
 /* ================= Shell & routing ================= */
@@ -293,7 +298,7 @@ function shell(content) {
   const sideItems = state.me.role === 'admin' ? [...items, ['akaun', 'Akaun', ICON.acct]] : items;
   $('#app').innerHTML = `
     <aside class="side">
-      <a class="side-logo" href="#${defaultRoute()}" aria-label="Laman utama"><img src="logo.png" alt="AJC Construction"></a>
+      <a class="side-logo" href="#${defaultRoute()}" aria-label="Laman utama"><img src="logo.png" alt="AJC Construction" width="240" height="85"></a>
       <div class="side-label">Menu</div>
       <nav class="side-nav">${sideItems.map(link).join('')}</nav>
       ${IS_DEMO() ? '<div class="side-demo"><b>Mod demo</b><span>Data disimpan dalam peranti ini sahaja.</span></div>' : ''}
@@ -301,7 +306,7 @@ function shell(content) {
     </aside>
     <div class="content">
       <header class="topbar"><div class="topbar-in">
-        <a class="logo" href="#${defaultRoute()}" aria-label="Laman utama"><img src="logo.png" alt="AJC Construction"></a>
+        <a class="logo" href="#${defaultRoute()}" aria-label="Laman utama"><img src="logo.png" alt="AJC Construction" width="240" height="85"></a>
         <div class="right">
           ${IS_DEMO() ? '<span class="demo-badge" title="Data disimpan dalam peranti ini sahaja">Demo</span>' : ''}
           <a href="#akaun" class="avatar-link" aria-label="Akaun saya">${avatar(state.me.name)}</a>
@@ -340,12 +345,32 @@ document.addEventListener('click', (e) => {
 });
 window.addEventListener('online', () => { const o = $('#offline'); if (o) o.hidden = true; });
 window.addEventListener('offline', () => { const o = $('#offline'); if (o) o.hidden = false; });
+// Sembunyi bottom nav & butang + bila papan kekunci telefon dibuka
+if (window.visualViewport) {
+  const kb = () => document.body.classList.toggle('kb-open', window.innerHeight - window.visualViewport.height > 150);
+  window.visualViewport.addEventListener('resize', kb);
+}
+// Seret bottom sheet ke bawah untuk tutup (telefon)
+(() => {
+  const dlg = $('#modal'); let y0 = null, dy = 0;
+  dlg.addEventListener('touchstart', (e) => {
+    if (window.innerWidth > 640) return;
+    const t = e.touches[0];
+    if (t.clientY - dlg.getBoundingClientRect().top < 64 && dlg.scrollTop <= 0) { y0 = t.clientY; dy = 0; dlg.style.transition = 'none'; }
+  }, { passive: true });
+  dlg.addEventListener('touchmove', (e) => { if (y0 == null) return; dy = Math.max(0, e.touches[0].clientY - y0); dlg.style.transform = `translateY(${dy}px)`; }, { passive: true });
+  dlg.addEventListener('touchend', () => {
+    if (y0 == null) return; y0 = null; dlg.style.transition = 'transform .2s';
+    if (dy > 110) { dlg.style.transform = 'translateY(100%)'; setTimeout(() => { closeModal(); dlg.style.transform = ''; dlg.style.transition = ''; }, 190); }
+    else dlg.style.transform = '';
+  });
+})();
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; });
 
 /* ================= Log masuk ================= */
 function renderLogin() {
   $('#app').innerHTML = `<div class="login">
-    <section class="login-brand">
+    <section class="login-brand" aria-label="Tentang sistem">
       <div class="lb-in">
         <span class="lb-badge">Aluminium & Glass Specialist</span>
         <h1>Setiap ukuran tepat.<br>Setiap tapak direkod.</h1>
@@ -357,9 +382,9 @@ function renderLogin() {
         </ul>
       </div>
     </section>
-    <section class="login-form">
+    <main class="login-form">
       <form id="lf" autocomplete="on">
-        <img class="lf-logo" src="logo.png" alt="AJC Construction">
+        <img class="lf-logo" src="logo.png" alt="AJC Construction" width="240" height="85">
         <div><h2>Log masuk</h2><p class="muted small" style="margin:4px 0 0">Gunakan akaun yang diberi oleh pentadbir.</p></div>
         <label class="f">Username<input id="lu" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="cth: ali" required></label>
         <label class="f">Kata laluan<input id="lp" name="password" type="password" autocomplete="current-password" placeholder="••••••" required></label>
@@ -370,7 +395,7 @@ function renderLogin() {
           <button type="button" data-demo="ali|ali123">${avatar('Ali Ahmad')}<span><b>Staff tapak</b><small>ali</small></span></button></div></div>` : ''}
       </form>
       <div class="lf-foot">© AJC Construction</div>
-    </section>
+    </main>
   </div>`;
   const submit = async () => {
     const btn = $('#lbtn'); btn.disabled = true; btn.classList.add('loading');
@@ -397,7 +422,7 @@ async function renderDashboard() {
   };
   shell(`
     ${pageHead(`${greeting()}, ${esc(firstName(state.me.name))}`, todayLong(),
-      `<button class="btn" id="d-staff">${ICON.staff}<span>Tambah staff</span></button><button class="btn primary" id="d-proj">${ICON.plus}<span>Projek baru</span></button>`)}
+      `<button class="btn" id="d-staff" aria-label="Tambah staff">${ICON.staff}<span>Tambah staff</span></button><button class="btn primary" id="d-proj">${ICON.plus}<span>Projek baru</span></button>`)}
     <div class="kpis">
       ${kpi('Bertugas sekarang', `${d.on_duty.length}<small> / ${d.staff_total}</small>`, ICON.punch, 'k-ok', '#rekod')}
       ${kpi('Projek aktif', d.active_projects, ICON.proj, '', '#projek')}
@@ -434,6 +459,15 @@ async function renderDashboard() {
   hydratePhotos($('#main'));
   $('#d-proj').onclick = () => projectForm();
   $('#d-staff').onclick = () => staffForm();
+}
+
+function installApp() {
+  if (state.installPrompt) { state.installPrompt.prompt(); state.installPrompt = null; return; }
+  openModal(`<div class="modal-head"><h2>Pasang di telefon</h2><button class="btn icon ghost" data-close aria-label="Tutup">${ICON.x}</button></div>
+    <ol class="steps-list">${isIOS()
+      ? '<li>Buka laman ini dalam <b>Safari</b>.</li><li>Tekan butang <b>Share</b> (kotak dengan anak panah ke atas).</li><li>Pilih <b>Add to Home Screen</b>, kemudian <b>Add</b>.</li>'
+      : '<li>Buka laman ini dalam <b>Chrome</b>.</li><li>Tekan menu <b>⋮</b> di penjuru kanan atas.</li><li>Pilih <b>Install app</b> atau <b>Add to Home screen</b>.</li>'}</ol>
+    <p class="muted small">Selepas dipasang, ikon AJC akan muncul di skrin utama dan app boleh dibuka walaupun tiada internet.</p>`);
 }
 
 /* ================= Kamera selfie ================= */
@@ -530,7 +564,11 @@ async function renderPunch() {
   const myRows = mine.filter((r) => r.user_id === state.me.id);
   const weekHours = myRows.reduce((a, r) => a + (r.hours || 0), 0);
   const days = new Set(myRows.map((r) => ymd(r.in_at))).size;
+  const showInstall = !isStandalone() && store.get('ajc_install_hide') !== '1' && window.innerWidth < 1024;
   shell(`
+    ${showInstall ? `<div class="install-bar" id="install-bar"><img src="icon-192.png" alt="" width="40" height="40"><div><b>Pasang AJC Tapak</b><small>Buka terus dari skrin utama telefon</small></div>
+      <button class="btn primary sm" id="ib-go">Pasang</button><button class="btn icon ghost" id="ib-x" aria-label="Tutup">${ICON.x}</button></div>` : ''}
+    <h1 class="sr-only">Punch kehadiran</h1>
     <div class="punch-grid">
     <section class="hero ${open ? 'on-duty' : ''}">
       <div class="hero-top">
@@ -547,8 +585,9 @@ async function renderPunch() {
         </div>
         <div class="punch-wrap"><button class="punch-btn out" id="pbtn">${ICON.power}<span>Punch Out</span><small>Tamat kerja</small></button></div>
       ` : `
-        <div class="hero-offices"><span class="k">Lapor diri di pejabat</span>
-          <div class="office-chips">${offices.map((o) => `<span class="glass">${ICON.pin}${esc(o.name)}</span>`).join('')}</div></div>
+        <div class="hero-offices"><span class="k">Lapor diri di</span>
+          <div class="office-chips">${offices.map((o) => `<span class="glass" data-office="${o.id}">${ICON.pin}${esc(o.name)}</span>`).join('')}</div>
+          <button type="button" class="near" id="near">${ICON.gps}<span>Semak lokasi saya</span></button></div>
         <div class="punch-wrap"><button class="punch-btn" id="pbtn">${ICON.power}<span>Punch In</span><small>Mula kerja</small></button></div>
       `}
       <div class="gps-line" id="gps">${ICON.selfie}<span>GPS + selfie · tanpa VPN · dalam kawasan pejabat</span></div>
@@ -568,12 +607,33 @@ async function renderPunch() {
   };
   tick(); state.clockTimer = setInterval(tick, 1000 * 15);
   hydratePhotos($('#main'));
+  // Status lokasi langsung: staff tahu sama ada dalam kawasan SEBELUM tekan Punch
+  const nearBtn = $('#near');
+  const checkNear = async (quiet) => {
+    if (!nearBtn) return;
+    nearBtn.classList.add('busy'); nearBtn.querySelector('span').textContent = 'Mengesan lokasi…';
+    try {
+      const pos = await getPosition();
+      const n = nearestOffice(offices, pos);
+      $$('.office-chips [data-office]').forEach((c) => c.classList.toggle('here', !!n && n.d <= n.o.radius_m && Number(c.dataset.office) === n.o.id));
+      nearBtn.className = `near ${n && n.d <= n.o.radius_m ? 'in' : 'out'}`;
+      nearBtn.querySelector('span').textContent = !n ? 'Lokasi pejabat belum ditetapkan'
+        : n.d <= n.o.radius_m ? `Anda di ${n.o.name} · ${fmtDist(n.d)}` : `Luar kawasan · ${fmtDist(n.d)} dari ${n.o.name}`;
+    } catch (err) {
+      nearBtn.className = 'near out'; nearBtn.querySelector('span').textContent = quiet ? 'Semak lokasi saya' : 'Location tidak aktif';
+      if (!quiet) toast(err.message, true);
+    }
+  };
+  if (nearBtn) nearBtn.onclick = () => checkNear(false);
   try {
     navigator.permissions?.query({ name: 'geolocation' }).then((ps) => {
       const show = () => { const el = $('#loc-off'); if (el) el.hidden = ps.state !== 'denied'; };
       show(); ps.onchange = show;
+      if (ps.state === 'granted') checkNear(true); // semak automatik jika kebenaran sudah diberi
     }).catch(() => {});
   } catch {}
+  if ($('#ib-x')) $('#ib-x').onclick = () => { store.set('ajc_install_hide', '1'); $('#install-bar').hidden = true; };
+  if ($('#ib-go')) $('#ib-go').onclick = () => installApp();
 
   $('#pbtn').onclick = (e) => busy(e.currentTarget, async () => {
     const gpsTxt = $('#gps span'); $('#gps').classList.add('seeking'); gpsTxt.textContent = 'Menyemak GPS & rangkaian…';
@@ -585,10 +645,10 @@ async function renderPunch() {
     gpsTxt.textContent = `Lokasi dikesan · ketepatan ±${pos.acc} m`;
     const kind = open ? 'out' : 'in';
     // 1) Semak radius dahulu supaya staff tidak perlu selfie jika berada di luar kawasan
-    const near = offices.filter((o) => o.lat != null).map((o) => ({ o, d: Math.round(distM(pos.lat, pos.lng, o.lat, o.lng)) })).sort((a, b) => a.d - b.d)[0];
+    const near = nearestOffice(offices, pos);
     if (!near) return reject('Lokasi pejabat belum ditetapkan', 'Sila hubungi admin untuk tetapkan lokasi pejabat.');
     if (pos.acc > 200) return reject('Isyarat GPS lemah', `Ketepatan ±${pos.acc} m. Tunggu sebentar atau keluar dari bangunan, kemudian cuba lagi.`);
-    if (near.d > near.o.radius_m) return reject('Di luar kawasan pejabat', `Anda ${fmtNum(near.d)} m dari ${near.o.name} (had ${near.o.radius_m} m). Punch hanya di ${offices.map((o) => o.name).join(' atau ')}.`);
+    if (near.d > near.o.radius_m) return reject('Di luar kawasan', `Anda ${fmtDist(near.d)} dari ${near.o.name} (had ${near.o.radius_m} m). Punch hanya di ${offices.map((o) => o.name).join(' atau ')}.`);
     // 2) Selfie
     gpsTxt.textContent = `Di ${near.o.name} · ${fmtNum(near.d)} m. Sila ambil selfie.`;
     const selfie = await takeSelfie({ kind, place: near.o.name });
@@ -605,25 +665,35 @@ async function renderPunch() {
         celebrate({ title: `Punch in ${at}`, sub: `Di ${r.office_name} · ${fmtNum(r.dist)} m dari pejabat. Selamat bekerja!` });
       }
     } catch (err) {
-      const titles = { OUTSIDE: 'Di luar kawasan pejabat', WEAK_GPS: 'Isyarat GPS lemah', VPN: 'VPN dikesan' };
+      const titles = { OUTSIDE: 'Di luar kawasan', WEAK_GPS: 'Isyarat GPS lemah', VPN: 'VPN dikesan' };
       if (!titles[err.code]) throw err;
       return reject(titles[err.code], err.message);
     }
     renderPunch();
   });
 }
-function recItem(r, showName = false) {
+function dayLabel(iso) {
+  const k = ymd(iso);
+  if (k === ymd(Date.now())) return 'Hari ini';
+  if (k === ymd(Date.now() - 864e5)) return 'Semalam';
+  return new Date(iso).toLocaleDateString('ms-MY', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' });
+}
+function recItem(r, showName = false, grouped = false) {
   const d = new Date(r.in_at);
   const gps = (lat, lng, ok, dist) => (lat == null ? '' : `<a href="${mapLink(lat, lng)}" target="_blank" rel="noopener" title="Buka peta">${geoPill(ok, dist)}</a>`);
-  return `<div class="rec">
-    <div class="day"><b>${d.toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric' })}</b><span>${d.toLocaleDateString('ms-MY', { timeZone: TZ, weekday: 'short' })}</span></div>
+  const lead = grouped
+    ? `<div class="lead">${r.in_selfie ? `<img class="lead-img" data-photo="${esc(r.in_selfie)}" data-zoom alt="Selfie masuk ${esc(r.user_name || '')}">` : avatar(r.user_name, 'lg')}
+        ${r.out_selfie ? `<img class="lead-out" data-photo="${esc(r.out_selfie)}" data-zoom alt="Selfie keluar ${esc(r.user_name || '')}">` : ''}</div>`
+    : `<div class="day"><b>${d.toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric' })}</b><span>${d.toLocaleDateString('ms-MY', { timeZone: TZ, weekday: 'short' })}</span></div>`;
+  return `<div class="rec ${grouped ? 'grouped' : ''}">
+    ${lead}
     <div class="what">
       <div class="t">${showName ? `${esc(r.user_name)} · ` : ''}${esc(placeName(r))}</div>
       <div class="s"><span class="mono">${fmtTime(r.in_at)} → ${r.out_at ? fmtTime(r.out_at) : '…'}</span>${gps(r.in_lat, r.in_lng, r.in_ok, r.in_dist_m)}${r.out_at ? gps(r.out_lat, r.out_lng, r.out_ok, r.out_dist_m) : ''}</div>
       ${r.note ? `<div class="s">${esc(r.note)}</div>` : ''}
     </div>
     <div class="hrs">${r.out_at ? `${fmtHours(r.hours)}<small>jam</small>` : '<span class="pill p-ok">Aktif</span>'}</div>
-    ${r.in_selfie || r.out_selfie ? `<div class="selfies">
+    ${!grouped && (r.in_selfie || r.out_selfie) ? `<div class="selfies">
       ${r.in_selfie ? `<figure><img data-photo="${esc(r.in_selfie)}" data-zoom alt="Selfie punch in ${esc(r.user_name || '')}"><figcaption>Masuk</figcaption></figure>` : ''}
       ${r.out_selfie ? `<figure><img data-photo="${esc(r.out_selfie)}" data-zoom alt="Selfie punch out ${esc(r.user_name || '')}"><figcaption>Keluar</figcaption></figure>` : ''}</div>` : ''}
   </div>`;
@@ -650,7 +720,7 @@ async function renderProjects() {
     $('#plist').innerHTML = rows.length ? rows.map((p) => `
       <a class="card proj" href="#projek/${p.id}">
         <div class="top"><span class="code">${esc(p.code)}</span><span class="pill st-${p.status}">${STATUS[p.status]}</span></div>
-        <h3>${esc(p.name)}</h3>
+        <h2 class="h3">${esc(p.name)}</h2>
         <div class="addr">${ICON.pin}<span>${esc([p.client, p.address].filter(Boolean).join(' · ') || 'Tiada alamat')}</span></div>
         ${steps(p.status)}
         <div class="meta"><span><b>${p.item_count}</b> ukuran</span><span><b>${p.unit_count}</b> unit</span><span><b>${fmtNum(p.area_m2, 2)}</b> m²</span><span class="upd">${timeAgo(p.updated_at)}</span></div>
@@ -736,7 +806,7 @@ async function renderProject(id) {
   const tab = state.projTab;
   const wa = waNumber(p.phone);
   const text = summaryText(p);
-  const sumTable = (title, rows) => `<div class="card"><h3 style="margin-bottom:10px">${title}</h3><div class="tbl-wrap flat"><table>
+  const sumTable = (title, rows) => `<div class="card"><h2 class="h3" style="margin-bottom:10px">${title}</h2><div class="tbl-wrap flat"><table>
     <thead><tr><th>Item</th><th class="num">Unit</th><th class="num">m²</th></tr></thead>
     <tbody>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num mono">${v.units}</td><td class="num mono">${fmtNum(v.area, 2)}</td></tr>`).join('')}</tbody>
     <tfoot><tr><td>Jumlah</td><td class="num mono">${units}</td><td class="num mono">${fmtNum(total, 2)}</td></tr></tfoot></table></div></div>`;
@@ -744,7 +814,7 @@ async function renderProject(id) {
   shell(`
     <a href="#projek" class="crumb no-print">${ICON.back}Semua projek</a>
     <section class="card p-hero">
-      <div class="print-only"><img src="logo.png" alt="AJC Construction" style="height:44px"><h2 style="margin-top:8px">Helaian Ukuran Tapak</h2></div>
+      <div class="print-only"><img src="logo.png" alt="AJC Construction" width="124" height="44" style="height:44px;width:auto"><h2 style="margin-top:8px">Helaian Ukuran Tapak</h2></div>
       <div class="title">
         <div><div class="code mono muted small">${esc(p.code)}</div><h1>${esc(p.name)}</h1></div>
         <span class="pill st-${p.status}">${STATUS[p.status]}</span>
@@ -782,7 +852,7 @@ async function renderProject(id) {
           <div class="dwg">${drawing(m)}</div>
           <div class="meas-b">
             <div class="meas-h">
-              <div style="min-width:0"><div class="eyebrow">${String(i + 1).padStart(2, '0')} · ${esc(m.item_type)}</div><h3>${esc(m.location)}</h3></div>
+              <div style="min-width:0"><div class="eyebrow">${String(i + 1).padStart(2, '0')} · ${esc(m.item_type)}</div><h2 class="h3">${esc(m.location)}</h2></div>
               <div class="acts"><button class="btn icon ghost" data-edit="${m.id}" aria-label="Edit ukuran">${ICON.edit}</button><button class="btn icon ghost danger" data-del="${m.id}" aria-label="Padam ukuran">${ICON.trash}</button></div>
             </div>
             <div class="size">${fmtNum(m.width_mm)}<span class="x">×</span>${fmtNum(m.height_mm)}<span class="u">mm</span>${m.qty > 1 ? `<span class="q">× ${m.qty}</span>` : ''}</div>
@@ -802,9 +872,9 @@ async function renderProject(id) {
         ${sumTable('Ikut jenis item', groupBy(ms, 'item_type'))}
         ${sumTable('Ikut warna frame', groupBy(ms, 'frame_color'))}
         <div class="card share">
-          <h3>Kongsi ringkasan</h3>
+          <h2 class="h3">Kongsi ringkasan</h2>
           <p class="muted small" style="margin:0">Hantar senarai ukuran ke pelanggan, bengkel atau pembekal kaca.</p>
-          <pre class="share-pre">${esc(text)}</pre>
+          <pre class="share-pre" tabindex="0" aria-label="Teks ringkasan">${esc(text)}</pre>
           <div class="actions">
             <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(text)}">${ICON.wa}<span>WhatsApp</span></a>
             ${wa ? `<a class="btn" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(text)}">${ICON.wa}<span>Hantar ke pelanggan</span></a>` : ''}
@@ -864,7 +934,7 @@ function measurementForm(projectId, m = null) {
     <div class="modal-head"><div><div class="eyebrow">${m ? 'Edit ukuran' : 'Ukuran baru'}</div><h2>${m ? esc(m.location) : 'Tambah ukuran'}</h2></div><button class="btn icon ghost" data-close aria-label="Tutup">${ICON.x}</button></div>
     <form id="mf" class="form" novalidate>
       <div class="fsec"><div class="fsec-h"><span class="n">1</span>Lokasi bukaan</div>
-        <input id="mf-loc" value="${esc(m?.location)}" placeholder="cth: Ruang tamu – pintu ke laman" aria-label="Lokasi bukaan">
+        <input id="mf-loc" enterkeyhint="next" autocomplete="off" value="${esc(m?.location)}" placeholder="cth: Ruang tamu – pintu ke laman" aria-label="Lokasi bukaan">
         ${qchips(LOCS, 'mf-loc', m?.location)}
       </div>
       <div class="fsec"><div class="fsec-h"><span class="n">2</span>Jenis item</div>
@@ -872,9 +942,9 @@ function measurementForm(projectId, m = null) {
       </div>
       <div class="fsec"><div class="fsec-h"><span class="n">3</span>Saiz bukaan</div>
         <div class="dims">
-          <label class="dim"><span>Lebar</span><div class="unit-in"><input id="mf-w" class="dim-input" type="number" inputmode="numeric" min="1" max="20000" value="${m?.width_mm ?? ''}" placeholder="0"><em>mm</em></div><small id="mf-wi">&nbsp;</small></label>
+          <label class="dim"><span>Lebar</span><div class="unit-in"><input id="mf-w" class="dim-input" type="number" inputmode="numeric" enterkeyhint="next" min="1" max="20000" value="${m?.width_mm ?? ''}" placeholder="0"><em>mm</em></div><small id="mf-wi">&nbsp;</small></label>
           <span class="times">×</span>
-          <label class="dim"><span>Tinggi</span><div class="unit-in"><input id="mf-h" class="dim-input" type="number" inputmode="numeric" min="1" max="20000" value="${m?.height_mm ?? ''}" placeholder="0"><em>mm</em></div><small id="mf-hi">&nbsp;</small></label>
+          <label class="dim"><span>Tinggi</span><div class="unit-in"><input id="mf-h" class="dim-input" type="number" inputmode="numeric" enterkeyhint="done" min="1" max="20000" value="${m?.height_mm ?? ''}" placeholder="0"><em>mm</em></div><small id="mf-hi">&nbsp;</small></label>
         </div>
         <div class="warn-line" id="mf-warn" hidden></div>
         <div class="preview"><div class="dwg" id="mf-dwg"></div>
@@ -925,6 +995,9 @@ function measurementForm(projectId, m = null) {
       $('#mf-warn').innerHTML = warn ? `${ICON.alert}<span>${warn}</span>` : ''; $('#mf-warn').hidden = !warn;
     };
     ['#mf-w', '#mf-h'].forEach((s) => $(s).addEventListener('input', upd)); upd();
+    // Enter: lokasi → lebar → tinggi → tutup papan kekunci (bukan simpan)
+    const nextOnEnter = (from, to) => $(from).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); to ? $(to).focus() : e.target.blur(); } });
+    nextOnEnter('#mf-loc', '#mf-w'); nextOnEnter('#mf-w', '#mf-h'); nextOnEnter('#mf-h', null);
     $('#mf-types').onclick = (e) => {
       const b = e.target.closest('.type'); if (!b) return;
       type = b.dataset.type;
@@ -985,7 +1058,7 @@ async function renderRecords() {
   const from = store.get('ajc_rf') || ymd(Date.now() - 6 * 864e5), to = store.get('ajc_rt') || today, uid = store.get('ajc_ru') || '';
   const users = isAdmin ? await api('/api/users') : [];
   shell(`
-    ${pageHead('Rekod kehadiran', isAdmin ? 'Punch in / out semua staff di pejabat' : 'Rekod punch anda', `<button type="button" class="btn" id="rcsv">${ICON.dl}<span>Excel (CSV)</span></button>`)}
+    ${pageHead('Rekod kehadiran', isAdmin ? 'Punch in / out semua staff di pejabat' : 'Rekod punch anda', `<button type="button" class="btn" id="rcsv" aria-label="Muat turun Excel (CSV)">${ICON.dl}<span>Excel (CSV)</span></button>`)}
     <section class="card filters">
       <div class="seg" id="rquick"><button data-r="0">Hari ini</button><button data-r="6">7 hari</button><button data-r="29">30 hari</button></div>
       <div class="filter-fields">
@@ -1022,7 +1095,12 @@ async function renderRecords() {
       <div><div class="eyebrow">Jumlah jam</div><div class="v">${fmtNum(total, 1)}<small> j</small></div></div>
       <div><div class="eyebrow">Staff hadir</div><div class="v">${Object.keys(per).length}</div></div></div>
       ${isAdmin && Object.keys(per).length > 1 ? `<div class="people">${Object.entries(per).sort((a, b) => b[1].h - a[1].h).map(([n, v]) => `<div class="person-card">${avatar(n)}<div><b>${esc(n)}</b><small>${v.d.size} hari · ${v.n} punch${v.bad ? ` · <span class="txt-bad">${v.bad} amaran</span>` : ''}</small></div><span class="mono">${fmtHours(v.h)}</span></div>`).join('')}</div>` : ''}`;
-    $('#rtbl').innerHTML = rows.length ? `<div class="rec-list">${rows.map((r) => recItem(r, isAdmin)).join('')}</div>` : emptyBox(ICON.rec, 'Tiada rekod', 'Tiada punch in dalam tempoh ini.');
+    const groups = [];
+    rows.forEach((r) => { const k = ymd(r.in_at); const g = groups[groups.length - 1]; if (g && g.k === k) g.rows.push(r); else groups.push({ k, rows: [r] }); });
+    $('#rtbl').innerHTML = rows.length ? groups.map((g) => `<section class="day-group">
+      <div class="day-h"><b>${dayLabel(g.rows[0].in_at)}</b><span>${g.rows.length} rekod · ${fmtHours(g.rows.reduce((a, r) => a + (r.hours || 0), 0))}</span></div>
+      <div class="rec-list">${g.rows.map((r) => recItem(r, isAdmin, true)).join('')}</div></section>`).join('')
+      : emptyBox(ICON.rec, 'Tiada rekod', 'Tiada punch in dalam tempoh ini.');
     hydratePhotos($('#rtbl'));
   };
   ['#rf', '#rt', '#ru'].forEach((s) => $(s) && ($(s).onchange = () => load().catch((e) => toast(e.message, true))));
@@ -1136,23 +1214,22 @@ function renderAccount() {
   shell(`
     <section class="card acct-hero">
       ${avatar(state.me.name, 'xl')}
-      <div><h2>${esc(state.me.name)}</h2><div class="muted small"><span class="mono">@${esc(state.me.username)}</span> · ${state.me.role === 'admin' ? 'Pentadbir' : 'Staff tapak'}</div></div>
+      <div><h1 class="acct-name">${esc(state.me.name)}</h1><div class="muted small"><span class="mono">@${esc(state.me.username)}</span> · ${state.me.role === 'admin' ? 'Pentadbir' : 'Staff tapak'}</div></div>
     </section>
     <div class="acct-grid">
       <form class="card form" id="cp">
-        <h3>Tukar kata laluan</h3>
+        <h2 class="h3">Tukar kata laluan</h2>
         <label class="f">Kata laluan semasa<input id="cp-cur" type="password" autocomplete="current-password" required></label>
         <label class="f">Kata laluan baru<input id="cp-new" type="password" autocomplete="new-password" minlength="6" required></label>
         <div><button class="btn primary">Tukar kata laluan</button></div>
       </form>
       <div class="stack">
         <section class="card form">
-          <h3>Pasang di telefon</h3>
+          <h2 class="h3">Pasang di telefon</h2>
           <p class="muted small" style="margin:0">Buka sistem terus dari skrin utama telefon seperti app biasa. Boleh dibuka walaupun tiada internet.</p>
           <div><button class="btn" id="install">${ICON.install}<span>Pasang app</span></button></div>
-          <p class="muted small" id="install-help" hidden style="margin:0">iPhone: tekan butang <b>Share</b> di Safari, kemudian <b>Add to Home Screen</b>. Android: menu ⋮ di Chrome, kemudian <b>Install app</b>.</p>
         </section>
-        ${IS_DEMO() ? '<section class="card form"><h3>Data demo</h3><p class="muted small" style="margin:0">Data demo hanya disimpan dalam browser peranti ini. Reset akan memulihkan data contoh.</p><div><button class="btn" id="demo-reset">Reset data demo</button></div></section>' : ''}
+        ${IS_DEMO() ? '<section class="card form"><h2 class="h3">Data demo</h2><p class="muted small" style="margin:0">Data demo hanya disimpan dalam browser peranti ini. Reset akan memulihkan data contoh.</p><div><button class="btn" id="demo-reset">Reset data demo</button></div></section>' : ''}
         <button class="btn danger" id="logout">${ICON.out}<span>Log keluar</span></button>
       </div>
     </div>`);
@@ -1160,9 +1237,7 @@ function renderAccount() {
     await api('/api/me/password', { body: { current: $('#cp-cur').value, next: $('#cp-new').value } });
     $('#cp').reset(); toast('Kata laluan ditukar');
   }); };
-  $('#install').onclick = async () => {
-    if (state.installPrompt) { state.installPrompt.prompt(); state.installPrompt = null; } else $('#install-help').hidden = false;
-  };
+  $('#install').onclick = () => installApp();
   if ($('#demo-reset')) $('#demo-reset').onclick = async () => {
     if (!(await confirmBox('Reset data demo?', 'Semua projek, ukuran dan rekod kehadiran dalam peranti ini akan kembali kepada data contoh.', 'Reset data', false))) return;
     window.AJCBackend.reset(); state.me = null; history.replaceState(null, '', location.pathname); renderLogin(); toast('Data demo direset');
@@ -1172,7 +1247,8 @@ function renderAccount() {
 
 /* ================= Mula ================= */
 (async () => {
-  try { state.me = await api('/api/me'); router(); } catch { renderLogin(); }
+  try { state.me = await api('/api/me'); await router(); } catch { renderLogin(); }
+  window.hideSplash && window.hideSplash();
 })();
 // Service worker: app boleh dibuka tanpa internet (HTTPS sahaja, cth. GitHub Pages)
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

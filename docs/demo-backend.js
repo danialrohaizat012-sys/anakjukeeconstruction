@@ -4,7 +4,7 @@
    hanya fail ini yang perlu diganti. */
 'use strict';
 (function () {
-  const KEY = 'ajc_demo_db_v3';
+  const KEY = 'ajc_demo_db_v4';
   const SESSION = 'ajc_demo_session';
   const STATUSES = ['ukur', 'fabrikasi', 'pasang', 'siap'];
 
@@ -37,7 +37,7 @@
     // Lokasi punch in / out. Koordinat contoh — admin tetapkan lokasi sebenar di menu Staff → Lokasi pejabat.
     offices: [
       { id: 1, name: 'Pejabat AJC', lat: 2.9937, lng: 101.7873, radius_m: 150 },
-      { id: 2, name: 'Rumah Owner', lat: 3.0005, lng: 101.7771, radius_m: 100 },
+      { id: 2, name: 'Rumah', lat: 3.0005, lng: 101.7771, radius_m: 100 },
     ],
     users: [
       { id: 1, username: 'admin', name: 'Pentadbir AJC', phone: '', role: 'admin', pass: hash('ajc12345'), active: true, created_at: now() },

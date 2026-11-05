@@ -28,7 +28,7 @@ Ia dibuka di telefon dan boleh "Add to Home Screen" supaya nampak seperti app.
 - Helaian ukuran A4 untuk bengkel (butang Cetak). Butang Waze, Maps dan Telefon pelanggan.
 
 **Punch in / punch out (lapor diri di pejabat)**
-- Staff lapor diri di pejabat dahulu, jadi punch in **dan** punch out hanya diterima di lokasi pejabat yang ditetapkan admin: **Pejabat AJC** dan **Rumah Owner**.
+- Staff lapor diri di pejabat dahulu, jadi punch in **dan** punch out hanya diterima di lokasi pejabat yang ditetapkan admin: **Pejabat AJC** dan **Rumah**.
 - Setiap punch mesti lulus semua semakan ini:
   1. **GPS / Location mesti dihidupkan.** Jika dimatikan atau kebenaran ditolak, punch tidak boleh dibuat.
   2. **Tiada VPN.** Sambungan melalui VPN, proxy, Tor, IP pusat data atau IP luar Malaysia ditolak.
@@ -39,6 +39,10 @@ Ia dibuka di telefon dan boleh "Add to Home Screen" supaya nampak seperti app.
 - Lokasi pejabat diurus di menu **Staff → Lokasi pejabat**: pergi ke lokasi, tekan *Guna lokasi saya sekarang*, dan tetapkan radius.
 
 > **Nota had teknikal:** semakan VPN dalam mod demo dibuat dari browser menggunakan servis ipapi.is. Bila disambung ke Supabase, semakan ini patut dibuat di server (berdasarkan IP permintaan), supaya tidak boleh dielak. Aplikasi web tidak dapat mengesan app "fake GPS" pada telefon. Selfie berserta cop masa dan lokasi membantu admin semak secara visual.
+
+**App telefon (PWA)**
+- Ikon app profesional (termasuk ikon maskable Android & ikon iPhone) dan animasi splash semasa app dibuka.
+- Boleh dipasang di skrin utama, dan dibuka tanpa internet. Tekan lama ikon untuk shortcut Punch / Projek / Rekod.
 
 **Lain-lain**
 - Urus staff (admin): tambah staff, reset kata laluan, nyahaktif akaun, tukar peranan.
@@ -79,5 +83,7 @@ docs/app.js             Antara muka (skrin, borang, lakaran ukuran)
 docs/demo-backend.js    Lapisan data — DEMO (localStorage)
 docs/style.css          Gaya / branding AJC
 docs/sw.js              Service worker (offline)
+docs/icon-*, apple-touch-icon.png, favicon-64.png   Ikon PWA
+AUDIT.md                Laporan audit (aksesibiliti, telefon, prestasi, keselamatan)
 docs/logo.png, icon-*   Logo & ikon app
 ```
