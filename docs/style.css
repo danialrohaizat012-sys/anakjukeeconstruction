@@ -693,3 +693,41 @@ h2.h3 { font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }
 .side-logo img { width: auto; }
 .filter-fields > label, .filter-fields input, .filter-fields select { min-width: 0; }
 @media (max-width: 640px) { .filter-fields { display: grid; grid-template-columns: 1fr 1fr; } .filter-fields > label.wide { grid-column: 1 / -1; } }
+
+/* ================= Lebih masa (OT) ================= */
+.p-warn { background: var(--warn-bg); color: var(--warn); }
+.txt-warn { color: var(--warn); font-weight: 650; }
+.stats .warn .v { color: var(--warn); }
+#rtab { width: 100%; }
+#rtab button span { background: var(--warn); color: #fff; }
+.ot-cell.on { background: rgba(255, 196, 92, .22); border-color: rgba(255, 196, 92, .6); }
+.ot-cell.on .v { color: #ffe2ad; }
+.ot-hero { display: flex; align-items: center; gap: 16px; background: var(--warn-bg); border-radius: var(--r); padding: 14px 16px; color: #6b3500; }
+.ot-hero > div:last-child { display: grid; gap: 2px; }
+.ot-hero small { font-size: .78rem; opacity: .85; }
+.ot-big { font-size: 1.9rem; font-weight: 800; letter-spacing: -.05em; color: var(--warn); }
+.ot-item { grid-template-areas: "day what hrs" "ft ft ft"; }
+.ot-item.pending { box-shadow: inset 3px 0 0 #e59a2f, var(--sh-1); }
+.ot-item.rejected { opacity: .75; }
+.ot-item .hrs { color: var(--warn); }
+.ot-item.approved .hrs { color: var(--ok); }
+.ot-reason { font-size: .82rem; color: var(--ink-2); margin-top: 4px; background: var(--surface-2); border-radius: 8px; padding: 5px 8px; }
+.ot-foot { grid-area: ft; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #eef1f6; }
+.ot-acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.ot-card .count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 99px; background: var(--warn); color: #fff; font: 750 .78rem var(--f-mono); vertical-align: 2px; margin-left: 4px; }
+.ot-card .card-head a { font-weight: 650; font-size: .85rem; display: inline-flex; align-items: center; padding: 8px 0; }
+.ot-card .card-head a svg { width: 16px; height: 16px; }
+.ot-quick { display: flex; gap: 6px; }
+.ot-quick .btn.sm { min-height: 38px; }
+.ot-quick .btn.danger { width: 38px; padding: 0; }
+.kv { display: grid; gap: 0; padding: 4px 16px; }
+.kv > div { display: flex; justify-content: space-between; gap: 14px; padding: 11px 0; border-top: 1px solid #eef1f6; font-size: .88rem; }
+.kv > div:first-child { border-top: 0; }
+.kv span { color: var(--muted); flex: none; }
+.kv b { text-align: right; font-weight: 650; }
+.row-add { display: flex; gap: 8px; }
+.row-add input { flex: 1; min-width: 0; }
+.qchips.hol .qchip { display: inline-flex; align-items: center; gap: 4px; padding-right: 4px; cursor: default; }
+.qchips.hol .qchip button { border: 0; background: rgba(255, 255, 255, .2); color: inherit; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.qchips.hol .qchip svg { width: 12px; height: 12px; }
+@media (max-width: 640px) { .ot-acts { margin-left: 0; width: 100%; } .ot-acts .btn { flex: 1; } .kv > div { flex-direction: column; gap: 2px; } .kv b { text-align: left; } }

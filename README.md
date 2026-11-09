@@ -40,6 +40,18 @@ Ia dibuka di telefon dan boleh "Add to Home Screen" supaya nampak seperti app.
 
 > **Nota had teknikal:** semakan VPN dalam mod demo dibuat dari browser menggunakan servis ipapi.is. Bila disambung ke Supabase, semakan ini patut dibuat di server (berdasarkan IP permintaan), supaya tidak boleh dielak. Aplikasi web tidak dapat mengesan app "fake GPS" pada telefon. Selfie berserta cop masa dan lokasi membantu admin semak secara visual.
 
+**Lebih masa (OT)**
+- OT dikira **automatik** dari punch out, mengikut waktu kerja yang ditetapkan admin (default: Isnin–Jumaat 8:30 pg–5:30 ptg, Sabtu 8:30 pg–1:00 ptg, Ahad cuti).
+  - Hari biasa: masa selepas waktu tamat (1.5×).
+  - Hari rehat: semua jam (2×).
+  - Cuti umum: semua jam (3×).
+  - Minimum 30 minit, dibundar ke bawah setiap 15 minit. Semua boleh diubah.
+- Skrin Punch menunjukkan **OT langsung** (contohnya "+2j 45m") semasa bertugas selepas waktu tamat.
+- Semasa punch out lewat, staff **wajib nyatakan sebab** (chip pilihan cepat) dan projek berkaitan sebelum selfie.
+- Admin **Lulus / Ubah jam / Tolak** dari dashboard atau tab **Rekod → Lebih masa (OT)**. Keputusan boleh dibatalkan.
+- Ringkasan untuk gaji: jam OT diluluskan, **jam bayaran** (jam × kadar) setiap staff, dan muat turun CSV OT.
+- Tetapan di **Staff → Waktu kerja & lebih masa**: waktu kerja, OT minimum, pembundaran dan senarai cuti umum.
+
 **App telefon (PWA)**
 - Ikon app profesional (termasuk ikon maskable Android & ikon iPhone) dan animasi splash semasa app dibuka.
 - Boleh dipasang di skrin utama, dan dibuka tanpa internet. Tekan lama ikon untuk shortcut Punch / Projek / Rekod.

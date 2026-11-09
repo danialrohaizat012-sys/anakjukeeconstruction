@@ -4,7 +4,7 @@
    hanya fail ini yang perlu diganti. */
 'use strict';
 (function () {
-  const KEY = 'ajc_demo_db_v4';
+  const KEY = 'ajc_demo_db_v5';
   const SESSION = 'ajc_demo_session';
   const STATUSES = ['ukur', 'fabrikasi', 'pasang', 'siap'];
 
@@ -25,6 +25,31 @@
     return 2 * R * Math.asin(Math.sqrt(a));
   }
 
+  /* ---------- Waktu kerja & lebih masa (OT) ---------- */
+  // work[0..6] = Ahad..Sabtu; null = hari rehat. Semua masa dalam waktu Malaysia.
+  const DEFAULT_SETTINGS = {
+    work: [null, ...Array(5).fill(0).map(() => ({ start: '08:30', end: '17:30' })), { start: '08:30', end: '13:00' }],
+    ot_min: 30, ot_round: 15, holidays: [],
+  };
+  const OT_RATE = { biasa: 1.5, rehat: 2, cuti: 3 };
+  const mytDay = (iso) => {
+    const d = new Date(new Date(iso).getTime() + 8 * 36e5);
+    return { ymd: d.toISOString().slice(0, 10), dow: d.getUTCDay() };
+  };
+  // OT = masa selepas waktu tamat (hari kerja), atau semua jam (hari rehat / cuti umum).
+  // Dibundarkan ke bawah ikut ot_round; kurang daripada ot_min dikira 0.
+  function calcOT(inAt, outAt, st) {
+    const tin = Date.parse(inAt), tout = Date.parse(outAt);
+    const day = mytDay(inAt), sched = st.work[day.dow];
+    let raw, kind, end = null;
+    if (st.holidays.includes(day.ymd)) { raw = (tout - tin) / 6e4; kind = 'cuti'; }
+    else if (!sched) { raw = (tout - tin) / 6e4; kind = 'rehat'; }
+    else { end = Date.parse(`${day.ymd}T${sched.end}:00+08:00`); raw = Math.max(0, (tout - Math.max(tin, end)) / 6e4); kind = 'biasa'; }
+    let minutes = Math.floor(Math.max(0, raw) / st.ot_round) * st.ot_round;
+    if (minutes < st.ot_min) minutes = 0;
+    return { minutes, kind, rate: OT_RATE[kind], raw: Math.round(raw), day_end: end ? new Date(end).toISOString() : null };
+  }
+
   /* ---------- Data contoh ---------- */
   function seed() {
     // Masa contoh dalam waktu Malaysia (UTC+8), tanpa mengira zon waktu peranti
@@ -33,6 +58,11 @@
       return new Date(`${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+08:00`).toISOString();
     };
     const ago = (mins) => new Date(Date.now() - mins * 6e4).toISOString();
+    const wd = (n, h, m) => {
+      let back = 0, found = 0;
+      while (found < n) { back += 1; const dow = mytDay(new Date(Date.now() - back * 864e5).toISOString()).dow; if (dow >= 1 && dow <= 5) found += 1; }
+      return t(back, h, m);
+    };
     const db = { seq: { users: 4, projects: 4, measurements: 13, attendance: 8, offices: 2 }, photos: {},
     // Lokasi punch in / out. Koordinat contoh — admin tetapkan lokasi sebenar di menu Staff → Lokasi pejabat.
     offices: [
@@ -73,17 +103,29 @@
       ({ id, project_id, location, item_type, width_mm, height_mm, qty, panels, glass, frame_color, notes, photo: null, measured_by: id % 3 === 0 ? 3 : 2,
         created_at: id > 9 ? t(1, 10, id) : id < 6 ? ago(300 - id * 40) : t(2, 11, id), updated_at: id > 9 ? t(1, 10, id) : id < 6 ? ago(300 - id * 40) : t(2, 11, id) })),
     attendance: [
-      [1, 2, 1, t(1, 8, 2), t(1, 17, 35), 2.9935, 101.7875, 28],
-      [2, 3, 1, t(1, 8, 15), t(1, 17, 30), 2.9934, 101.7877, 55],
-      [3, 4, 2, t(1, 8, 20), t(1, 17, 40), 3.0006, 101.7772, 15],
-      [4, 2, 1, t(2, 8, 5), t(2, 18, 0), 2.9938, 101.7874, 16],
-      [5, 3, 2, t(2, 7, 55), t(2, 17, 0), 3.0004, 101.7770, 15],
-      [6, 4, 1, t(2, 8, 30), t(2, 17, 10), 2.9936, 101.7872, 15],
+      [1, 2, 1, wd(1, 8, 2), wd(1, 17, 35), 2.9935, 101.7875, 28],
+      [2, 3, 1, wd(1, 8, 15), wd(1, 20, 20), 2.9934, 101.7877, 55],
+      [3, 4, 2, wd(1, 8, 20), wd(1, 17, 40), 3.0006, 101.7772, 15],
+      [4, 2, 1, wd(2, 8, 5), wd(2, 19, 10), 2.9938, 101.7874, 16],
+      [5, 3, 2, wd(2, 7, 55), wd(2, 17, 35), 3.0004, 101.7770, 15],
+      [6, 4, 1, wd(2, 8, 30), wd(2, 21, 0), 2.9936, 101.7872, 15],
       [7, 3, 1, ago(170), null, 2.9938, 101.7871, 24],
       [8, 4, 2, ago(215), null, 3.0005, 101.7772, 11],
     ].map(([id, user_id, office_id, in_at, out_at, lat, lng, dist]) => ({ id, user_id, office_id, project_id: null, in_at, in_lat: lat, in_lng: lng, in_acc: 12,
       in_dist_m: dist, in_ok: true, out_at, out_lat: out_at ? lat : null, out_lng: out_at ? lng : null, out_acc: out_at ? 10 : null,
-      out_dist_m: out_at ? dist : null, out_ok: out_at ? true : null, note: '' })) };
+      out_dist_m: out_at ? dist : null, out_ok: out_at ? true : null, note: '' })),
+    settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+    // OT contoh: satu menunggu kelulusan, satu diluluskan penuh, satu diluluskan sebahagian
+    const otInfo = { 2: ['pending', 'Siapkan fabrikasi frame folding Kedai Kopi', 2, null],
+      4: ['approved', 'Pasang partition bilik mesyuarat', 4, null], 6: ['approved', 'Muat naik kaca ke lori untuk esok', 4, 180] };
+    db.attendance.forEach((a) => {
+      if (!a.out_at) return;
+      const c = calcOT(a.in_at, a.out_at, db.settings);
+      if (!c.minutes) return;
+      const [status, reason, pid, appr] = otInfo[a.id] || ['pending', '', null, null];
+      a.ot = { minutes: c.minutes, kind: c.kind, rate: c.rate, status, reason, project_id: pid,
+        approved_minutes: status === 'approved' ? (appr ?? c.minutes) : null, decided_by: status === 'pending' ? null : 1, decided_at: status === 'pending' ? null : a.out_at, admin_note: appr ? 'Diluluskan 3 jam sahaja' : '' };
+    });
     return db;
   }
 
@@ -92,6 +134,7 @@
     if (db) return db;
     try { db = JSON.parse(ls.get(KEY)); } catch { db = null; }
     if (!db || !db.users || !db.offices) { db = seed(); save(); }
+    if (!db.settings) db.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     return db;
   }
   function save() {
@@ -188,7 +231,8 @@
       .filter((a) => (uid == null || a.user_id === uid) && (!q.from || a.in_at >= q.from) && (!q.to || a.in_at < q.to))
       .sort((x, y) => (x.in_at < y.in_at ? 1 : -1))
       .map((a) => ({ ...a, user_name: userById(a.user_id)?.name, office_name: officeName(a.office_id), project_name: projectName(a.project_id),
-        hours: a.out_at ? (new Date(a.out_at) - new Date(a.in_at)) / 36e5 : null }));
+        hours: a.out_at ? (new Date(a.out_at) - new Date(a.in_at)) / 36e5 : null,
+        ot: a.ot ? { ...a.ot, project_name: projectName(a.ot.project_id), decided_by_name: a.ot.decided_by ? userById(a.ot.decided_by)?.name : null } : null }));
   }
 
   /* ---------- Routes (sama dengan API sebenar) ---------- */
@@ -286,7 +330,13 @@
     ['GET', /^\/api\/photos\/([\w-]+)$/, true, (b, u, [id]) => {
       if (!db.photos[id]) throw new ApiError(404, 'Gambar tidak dijumpai'); return db.photos[id];
     }],
-    ['GET', /^\/api\/attendance\/status$/, true, (b, u) => ({ open: openShift(u.id) })],
+    ['GET', /^\/api\/attendance\/status$/, true, (b, u) => {
+      const open = openShift(u.id);
+      const today = mytDay(now()), sched = db.settings.work[today.dow];
+      return { open, ot_estimate: open ? calcOT(open.in_at, now(), db.settings) : null,
+        rules: { min: db.settings.ot_min, round: db.settings.ot_round },
+        today: { work: sched, holiday: db.settings.holidays.includes(today.ymd) } };
+    }],
     ['POST', /^\/api\/attendance\/in$/, true, (b, u) => {
       if (openShift(u.id)) throw new ApiError(400, 'Anda sudah punch in. Sila punch out dahulu.');
       const { lat, lng, acc } = needCoords(b); const g = officeCheck(lat, lng, acc);
@@ -303,11 +353,52 @@
       const net = needNet(b);
       if (!g.ok) throw outsideError('out', g);
       const selfie = needSelfie(b);
-      Object.assign(db.attendance.find((x) => x.id === s.id), { out_at: now(), out_lat: lat, out_lng: lng, out_acc: acc, out_dist_m: g.dist, out_ok: g.ok, out_office_id: g.office.id, out_selfie: selfie, out_net: net });
-      save(); return { ok: true, dist: g.dist, inside: g.ok, office_name: g.office?.name ?? null };
+      const outAt = now();
+      const c = calcOT(s.in_at, outAt, db.settings);
+      const ot = c.minutes ? { minutes: c.minutes, kind: c.kind, rate: c.rate, status: 'pending', reason: str(b.ot_reason, 300), project_id: num(b.ot_project_id),
+        approved_minutes: null, decided_by: null, decided_at: null, admin_note: '' } : null;
+      Object.assign(db.attendance.find((x) => x.id === s.id), { out_at: outAt, out_lat: lat, out_lng: lng, out_acc: acc, out_dist_m: g.dist, out_ok: g.ok, out_office_id: g.office.id, out_selfie: selfie, out_net: net, ot });
+      save(); return { ok: true, dist: g.dist, inside: g.ok, office_name: g.office?.name ?? null, ot };
     }],
     ['GET', /^\/api\/attendance$/, true, (b, u, m, q) => attendanceRows(u, q)],
     ['GET', /^\/api\/offices$/, true, () => db.offices],
+    ['GET', /^\/api\/settings$/, true, () => db.settings],
+    ['PATCH', /^\/api\/settings$/, true, (b, u) => {
+      requireAdmin(u);
+      const hhmm = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v || '');
+      const st = JSON.parse(JSON.stringify(db.settings));
+      if (Array.isArray(b.work)) {
+        if (b.work.length !== 7) throw new ApiError(400, 'Jadual kerja tidak sah');
+        st.work = b.work.map((d, i) => {
+          if (!d) return null;
+          if (!hhmm(d.start) || !hhmm(d.end) || d.start >= d.end) throw new ApiError(400, `Waktu kerja hari ${['Ahad', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu'][i]} tidak sah`);
+          return { start: d.start, end: d.end };
+        });
+      }
+      if (b.ot_min !== undefined) { const v = num(b.ot_min); if (v == null || v < 0 || v > 240) throw new ApiError(400, 'OT minimum tidak sah'); st.ot_min = v; }
+      if (b.ot_round !== undefined) { const v = num(b.ot_round); if (![1, 5, 10, 15, 30, 60].includes(v)) throw new ApiError(400, 'Pembundaran tidak sah'); st.ot_round = v; }
+      if (Array.isArray(b.holidays)) {
+        if (b.holidays.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))) throw new ApiError(400, 'Tarikh cuti umum tidak sah');
+        st.holidays = [...new Set(b.holidays)].sort();
+      }
+      db.settings = st; save(); return st;
+    }],
+    ['PATCH', /^\/api\/overtime\/(\d+)$/, true, (b, u, [id]) => {
+      requireAdmin(u);
+      const a = db.attendance.find((x) => x.id === Number(id));
+      if (!a || !a.ot) throw new ApiError(404, 'Rekod OT tidak dijumpai');
+      if (b.action === 'approve') {
+        const mins = b.minutes === undefined ? a.ot.minutes : Math.round(num(b.minutes) ?? -1);
+        if (!(mins > 0 && mins <= a.ot.minutes)) throw new ApiError(400, `Jam diluluskan mesti antara 1 minit dan ${a.ot.minutes} minit`);
+        Object.assign(a.ot, { status: 'approved', approved_minutes: mins });
+      } else if (b.action === 'reject') {
+        Object.assign(a.ot, { status: 'rejected', approved_minutes: 0 });
+      } else if (b.action === 'reset') {
+        Object.assign(a.ot, { status: 'pending', approved_minutes: null });
+      } else throw new ApiError(400, 'Tindakan tidak sah');
+      Object.assign(a.ot, { decided_by: b.action === 'reset' ? null : u.id, decided_at: b.action === 'reset' ? null : now(), admin_note: str(b.note, 200) });
+      save(); return { ok: true };
+    }],
     ['POST', /^\/api\/offices$/, true, (b, u) => {
       requireAdmin(u); const id = nextId('offices'); db.offices.push({ id, ...officeFields(b) }); save(); return { id };
     }],
@@ -347,6 +438,12 @@
           return db.users.filter((x) => x.active && x.role === 'staff' && !inToday.has(x.id)).map((x) => ({ user_id: x.id, user_name: x.name, phone: x.phone }));
         })(),
         staff_count: db.users.filter((x) => x.active && x.role === 'staff').length,
+        ot_pending: db.attendance.filter((a) => a.ot && a.ot.status === 'pending').sort((x, y) => (x.in_at < y.in_at ? 1 : -1))
+          .map((a) => ({ id: a.id, user_name: userById(a.user_id)?.name, in_at: a.in_at, out_at: a.out_at, minutes: a.ot.minutes, kind: a.ot.kind, rate: a.ot.rate, reason: a.ot.reason, project_name: projectName(a.ot.project_id), selfie: a.out_selfie || a.in_selfie || null })),
+        ot_month_min: (() => {
+          const ym = mytDay(now()).ymd.slice(0, 7);
+          return db.attendance.filter((a) => a.ot && a.ot.status === 'approved' && mytDay(a.in_at).ymd.startsWith(ym)).reduce((s, a) => s + a.ot.approved_minutes, 0);
+        })(),
         by_status: Object.fromEntries(STATUSES.map((st) => [st, projects.filter((p) => p.status === st)])),
         active_projects: active.length,
         active_area_m2: active.reduce((a, p) => a + p.area_m2, 0),

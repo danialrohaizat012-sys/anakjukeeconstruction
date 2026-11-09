@@ -24,6 +24,27 @@ const fmtTime = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { time
 const fmtDate = (iso) => new Date(iso).toLocaleDateString('ms-MY', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' });
 const fmtDateTime = (iso) => `${fmtDate(iso)}, ${fmtTime(iso)}`;
 const fmtHours = (h) => { if (h == null) return '—'; const m = Math.round(h * 60); return `${Math.floor(m / 60)}j ${String(m % 60).padStart(2, '0')}m`; };
+const fmtMin = (m) => { m = Math.round(m || 0); const h = Math.floor(m / 60), r = m % 60; return h ? `${h}j${r ? ` ${String(r).padStart(2, '0')}m` : ''}` : `${r}m`; };
+const fmt12 = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'pg' : h < 19 ? 'ptg' : 'mlm'}`; };
+const OT_KIND = { biasa: 'Hari biasa', rehat: 'Hari rehat', cuti: 'Cuti umum' };
+const OT_RATE = { biasa: 1.5, rehat: 2, cuti: 3 };
+const DAYS = ['Ahad', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu'];
+const OT_REASONS = ['Fabrikasi di bengkel', 'Pemasangan di tapak', 'Ukur tapak', 'Muat barang ke lori', 'Siapkan kerja segera'];
+function otPill(ot) {
+  if (!ot) return '';
+  if (ot.status === 'approved') return `<span class="pill p-ok">OT ${fmtMin(ot.approved_minutes)} lulus</span>`;
+  if (ot.status === 'rejected') return '<span class="pill p-bad">OT ditolak</span>';
+  return `<span class="pill p-warn">OT ${fmtMin(ot.minutes)} · menunggu</span>`;
+}
+// Anggaran OT langsung untuk syif yang sedang berjalan (logik sama dengan server)
+function otNow(inAt, status) {
+  const td = status.today, kind = td.holiday ? 'cuti' : !td.work ? 'rehat' : 'biasa';
+  const raw = kind !== 'biasa' ? (Date.now() - Date.parse(inAt)) / 6e4
+    : Math.max(0, (Date.now() - Math.max(Date.parse(inAt), Date.parse(`${ymd(Date.now())}T${td.work.end}:00+08:00`))) / 6e4);
+  let minutes = Math.floor(raw / status.rules.round) * status.rules.round;
+  if (minutes < status.rules.min) minutes = 0;
+  return { minutes, kind, rate: OT_RATE[kind], raw: Math.round(raw) };
+}
 const ymd = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: TZ });
 const todayLong = () => new Date().toLocaleDateString('ms-MY', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const mapLink = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`;
@@ -429,6 +450,13 @@ async function renderDashboard() {
       ${kpi('Kaca dalam proses', `${fmtNum(d.active_area_m2, 1)}<small> m²</small>`, ICON.layers)}
       ${kpi('Belum lapor diri', `${d.not_in_today.length}<small> / ${d.staff_count}</small>`, ICON.alert, d.not_in_today.length ? 'k-warn' : 'k-ok', '#rekod')}
     </div>
+    ${d.ot_pending.length ? `<section class="card ot-card">
+      <div class="card-head"><h2>OT menunggu kelulusan <span class="count">${d.ot_pending.length}</span></h2><a href="#rekod" id="d-otall">Semua ${ICON.chev}</a></div>
+      <ul class="duty">${d.ot_pending.slice(0, 4).map((o) => `<li>${o.selfie ? `<img class="avatar selfie-av" data-photo="${esc(o.selfie)}" data-zoom alt="Selfie ${esc(o.user_name)}">` : avatar(o.user_name)}
+        <div class="duty-t"><b>${esc(o.user_name)} · <span class="mono">${fmtMin(o.minutes)}</span></b><small>${dayLabel(o.in_at)} · ${OT_KIND[o.kind]} ${o.rate}× · ${esc(o.reason || 'Tiada sebab')}${o.project_name ? ` · ${esc(o.project_name)}` : ''}</small></div>
+        <div class="ot-quick"><button class="btn sm danger" data-dq="reject" data-id="${o.id}" aria-label="Tolak OT ${esc(o.user_name)}">${ICON.x}</button><button class="btn sm primary" data-dq="approve" data-id="${o.id}">${ICON.check}<span>Lulus</span></button></div></li>`).join('')}</ul>
+      <p class="muted small" style="margin:10px 0 0">OT diluluskan bulan ini: <b class="mono">${fmtMin(d.ot_month_min)}</b></p>
+    </section>` : ''}
     <div class="dash-grid">
       <section class="card">
         <div class="card-head"><h2>Sedang bertugas</h2><span class="live"><span class="dot"></span>Langsung</span></div>
@@ -458,6 +486,11 @@ async function renderDashboard() {
     </section>`);
   hydratePhotos($('#main'));
   $('#d-proj').onclick = () => projectForm();
+  if ($('#d-otall')) $('#d-otall').onclick = () => { state.recTab = 'ot'; };
+  $$('[data-dq]').forEach((b) => (b.onclick = () => busy(b, async () => {
+    await api(`/api/overtime/${b.dataset.id}`, { method: 'PATCH', body: { action: b.dataset.dq } });
+    toast(b.dataset.dq === 'approve' ? 'OT diluluskan' : 'OT ditolak'); await renderDashboard();
+  })));
   $('#d-staff').onclick = () => staffForm();
 }
 
@@ -468,6 +501,38 @@ function installApp() {
       ? '<li>Buka laman ini dalam <b>Safari</b>.</li><li>Tekan butang <b>Share</b> (kotak dengan anak panah ke atas).</li><li>Pilih <b>Add to Home Screen</b>, kemudian <b>Add</b>.</li>'
       : '<li>Buka laman ini dalam <b>Chrome</b>.</li><li>Tekan menu <b>⋮</b> di penjuru kanan atas.</li><li>Pilih <b>Install app</b> atau <b>Add to Home screen</b>.</li>'}</ol>
     <p class="muted small">Selepas dipasang, ikon AJC akan muncul di skrin utama dan app boleh dibuka walaupun tiada internet.</p>`);
+}
+
+/* ================= Sebab lebih masa (semasa punch out) ================= */
+function askOT(o, projects) {
+  return new Promise((resolve) => {
+    let done = false, result = null;
+    const finish = (v) => { if (done) return; done = true; resolve(v); };
+    openModal(`
+      <div class="modal-head"><div><div class="eyebrow">Punch out</div><h2>Kerja lebih masa</h2></div><button class="btn icon ghost" data-close aria-label="Batal">${ICON.x}</button></div>
+      <div class="ot-hero"><div class="ot-big mono">${fmtMin(o.minutes)}</div>
+        <div><b>${OT_KIND[o.kind]} · kadar ${o.rate}×</b><small>Akan dihantar kepada admin untuk kelulusan</small></div></div>
+      <form id="otf" class="form" novalidate>
+        <div class="fsec">
+          <label class="f">Projek<select id="ot-proj"><option value="">Kerja pejabat / bengkel (tiada projek)</option>${projects.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
+          <label class="f" for="ot-reason">Sebab lebih masa *</label>
+          <div class="qchips" id="ot-chips">${OT_REASONS.map((r) => `<button type="button" class="qchip" data-v="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+          <textarea id="ot-reason" rows="2" placeholder="Terangkan ringkas kerja yang dibuat"></textarea>
+        </div>
+        <div class="err" id="ot-err" hidden></div>
+        <div class="modal-foot"><button type="button" class="btn" data-close>Batal</button><button class="btn primary" id="ot-ok">${ICON.check}<span>Teruskan ke selfie</span></button></div>
+      </form>`, (dlg) => {
+      $('#ot-chips').onclick = (e) => { const c = e.target.closest('.qchip'); if (!c) return; $('#ot-reason').value = c.dataset.v; $$('#ot-chips .qchip').forEach((x) => x.classList.toggle('on', x === c)); };
+      $('#otf').onsubmit = (e) => {
+        e.preventDefault();
+        const reason = $('#ot-reason').value.trim();
+        if (!reason) { $('#ot-err').textContent = 'Sila nyatakan sebab lebih masa.'; $('#ot-err').hidden = false; $('#ot-reason').focus(); return; }
+        result = { reason, project_id: $('#ot-proj').value || null }; closeModal();
+      };
+      // Selesaikan hanya selepas modal benar-benar tertutup, supaya kamera selfie yang dibuka selepas ini tidak terkena event 'close'
+      dlg.addEventListener('close', () => finish(result), { once: true });
+    });
+  });
 }
 
 /* ================= Kamera selfie ================= */
@@ -556,11 +621,13 @@ function takeSelfie({ kind, place }) {
 
 /* ================= Punch in / out ================= */
 async function renderPunch() {
-  const [{ open }, offices, mine] = await Promise.all([
+  const [status, offices, mine] = await Promise.all([
     api('/api/attendance/status'),
     api('/api/offices'),
     api(`/api/attendance?from=${encodeURIComponent(new Date(Date.now() - 6 * 864e5).toISOString())}`),
   ]);
+  const { open } = status;
+  const projects = open ? (await api('/api/projects')).filter((p) => p.status !== 'siap') : [];
   const myRows = mine.filter((r) => r.user_id === state.me.id);
   const weekHours = myRows.reduce((a, r) => a + (r.hours || 0), 0);
   const days = new Set(myRows.map((r) => ymd(r.in_at))).size;
@@ -581,6 +648,8 @@ async function renderPunch() {
         <div class="shift-info">
           <div><div class="k">Masuk</div><div class="v mono">${fmtTime(open.in_at)}</div></div>
           <div><div class="k">Tempoh</div><div class="v mono" id="elapsed">—</div></div>
+          <div><div class="k">${status.today.work && !status.today.holiday ? 'Waktu tamat' : 'Hari ini'}</div><div class="v mono">${status.today.holiday ? 'Cuti umum' : status.today.work ? fmt12(status.today.work.end) : 'Hari rehat'}</div></div>
+          <div class="ot-cell"><div class="k">Lebih masa</div><div class="v mono" id="otlive">—</div></div>
           <div class="wide"><div class="k">Lapor diri di</div><div class="v">${esc(placeName(open))}</div></div>
         </div>
         <div class="punch-wrap"><button class="punch-btn out" id="pbtn">${ICON.power}<span>Punch Out</span><small>Tamat kerja</small></button></div>
@@ -604,6 +673,11 @@ async function renderPunch() {
     const now = new Date();
     $('#clock').textContent = now.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
     if (open && $('#elapsed')) $('#elapsed').textContent = fmtHours((now - new Date(open.in_at)) / 36e5);
+    if (open && $('#otlive')) {
+      const o = otNow(open.in_at, status);
+      $('#otlive').textContent = o.minutes ? `+${fmtMin(o.minutes)}` : o.kind === 'biasa' ? 'Belum' : '—';
+      $('#otlive').closest('.ot-cell').classList.toggle('on', o.minutes > 0);
+    }
   };
   tick(); state.clockTimer = setInterval(tick, 1000 * 15);
   hydratePhotos($('#main'));
@@ -649,7 +723,16 @@ async function renderPunch() {
     if (!near) return reject('Lokasi pejabat belum ditetapkan', 'Sila hubungi admin untuk tetapkan lokasi pejabat.');
     if (pos.acc > 200) return reject('Isyarat GPS lemah', `Ketepatan ±${pos.acc} m. Tunggu sebentar atau keluar dari bangunan, kemudian cuba lagi.`);
     if (near.d > near.o.radius_m) return reject('Di luar kawasan', `Anda ${fmtDist(near.d)} dari ${near.o.name} (had ${near.o.radius_m} m). Punch hanya di ${offices.map((o) => o.name).join(' atau ')}.`);
-    // 2) Selfie
+    // 2) Lebih masa: minta sebab & projek sebelum selfie
+    let otInfo = null;
+    if (open) {
+      const o = otNow(open.in_at, status);
+      if (o.minutes) {
+        otInfo = await askOT(o, projects);
+        if (!otInfo) { $('#gps').classList.remove('seeking'); gpsTxt.textContent = 'Punch out dibatalkan.'; return; }
+      }
+    }
+    // 3) Selfie
     gpsTxt.textContent = `Di ${near.o.name} · ${fmtNum(near.d)} m. Sila ambil selfie.`;
     const selfie = await takeSelfie({ kind, place: near.o.name });
     $('#gps').classList.remove('seeking');
@@ -658,8 +741,9 @@ async function renderPunch() {
     const at = fmtTime(new Date().toISOString());
     try {
       if (open) {
-        const r = await api('/api/attendance/out', { body: { ...pos, selfie, net } });
-        celebrate({ title: `Punch out ${at}`, sub: `Di ${r.office_name} · Terima kasih, ${firstName(state.me.name)}. Jumpa esok!` });
+        const r = await api('/api/attendance/out', { body: { ...pos, selfie, net, ...(otInfo ? { ot_reason: otInfo.reason, ot_project_id: otInfo.project_id } : {}) } });
+        celebrate({ title: `Punch out ${at}`, sub: r.ot ? `OT ${fmtMin(r.ot.minutes)} dihantar kepada admin untuk kelulusan. Terima kasih, ${firstName(state.me.name)}!`
+          : `Di ${r.office_name} · Terima kasih, ${firstName(state.me.name)}. Jumpa esok!` });
       } else {
         const r = await api('/api/attendance/in', { body: { ...pos, selfie, net } });
         celebrate({ title: `Punch in ${at}`, sub: `Di ${r.office_name} · ${fmtNum(r.dist)} m dari pejabat. Selamat bekerja!` });
@@ -689,7 +773,7 @@ function recItem(r, showName = false, grouped = false) {
     ${lead}
     <div class="what">
       <div class="t">${showName ? `${esc(r.user_name)} · ` : ''}${esc(placeName(r))}</div>
-      <div class="s"><span class="mono">${fmtTime(r.in_at)} → ${r.out_at ? fmtTime(r.out_at) : '…'}</span>${gps(r.in_lat, r.in_lng, r.in_ok, r.in_dist_m)}${r.out_at ? gps(r.out_lat, r.out_lng, r.out_ok, r.out_dist_m) : ''}</div>
+      <div class="s"><span class="mono">${fmtTime(r.in_at)} → ${r.out_at ? fmtTime(r.out_at) : '…'}</span>${gps(r.in_lat, r.in_lng, r.in_ok, r.in_dist_m)}${r.out_at ? gps(r.out_lat, r.out_lng, r.out_ok, r.out_dist_m) : ''}${otPill(r.ot)}</div>
       ${r.note ? `<div class="s">${esc(r.note)}</div>` : ''}
     </div>
     <div class="hrs">${r.out_at ? `${fmtHours(r.hours)}<small>jam</small>` : '<span class="pill p-ok">Aktif</span>'}</div>
@@ -1058,7 +1142,8 @@ async function renderRecords() {
   const from = store.get('ajc_rf') || ymd(Date.now() - 6 * 864e5), to = store.get('ajc_rt') || today, uid = store.get('ajc_ru') || '';
   const users = isAdmin ? await api('/api/users') : [];
   shell(`
-    ${pageHead('Rekod kehadiran', isAdmin ? 'Punch in / out semua staff di pejabat' : 'Rekod punch anda', `<button type="button" class="btn" id="rcsv" aria-label="Muat turun Excel (CSV)">${ICON.dl}<span>Excel (CSV)</span></button>`)}
+    ${pageHead('Rekod kehadiran', isAdmin ? 'Punch in / out dan lebih masa semua staff' : 'Rekod punch & lebih masa anda', `<button type="button" class="btn" id="rcsv" aria-label="Muat turun Excel (CSV)">${ICON.dl}<span>Excel (CSV)</span></button>`)}
+    <div class="seg seg-fill" id="rtab" role="tablist"><button role="tab" data-t="hadir">Kehadiran</button><button role="tab" data-t="ot">Lebih masa (OT)<span id="otcount" hidden></span></button></div>
     <section class="card filters">
       <div class="seg" id="rquick"><button data-r="0">Hari ini</button><button data-r="6">7 hari</button><button data-r="29">30 hari</button></div>
       <div class="filter-fields">
@@ -1078,6 +1163,11 @@ async function renderRecords() {
     if (t) qs.set('to', new Date(new Date(`${t}T00:00:00+08:00`).getTime() + 864e5).toISOString());
     if (u) qs.set('user_id', u);
     const rows = await api(`/api/attendance?${qs}`);
+    const tab = state.recTab || 'hadir';
+    $$('#rtab button').forEach((b) => { b.classList.toggle('on', b.dataset.t === tab); b.setAttribute('aria-selected', b.dataset.t === tab); });
+    const pend = rows.filter((r) => r.ot && r.ot.status === 'pending').length;
+    $('#otcount').textContent = pend; $('#otcount').hidden = !pend;
+    if (tab === 'ot') return renderOTList(rows, isAdmin, f, t);
     $('#rcsv').onclick = () => {
       const c = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const dt = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: TZ, hour12: false }) : '');
@@ -1105,12 +1195,90 @@ async function renderRecords() {
   };
   ['#rf', '#rt', '#ru'].forEach((s) => $(s) && ($(s).onchange = () => load().catch((e) => toast(e.message, true))));
   $('#rquick').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $('#rf').value = ymd(Date.now() - Number(b.dataset.r) * 864e5); $('#rt').value = today; load(); };
+  $('#rtab').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; state.recTab = b.dataset.t; load(); };
+  // tindakan admin pada OT
+  $('#rtbl').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-ot-act]'); if (!btn) return;
+    const row = state.otRows.find((r) => r.id === Number(btn.dataset.id)); if (!row) return;
+    const act = btn.dataset.otAct;
+    if (act === 'edit') return otApproveForm(row, load);
+    if (act === 'reject' && !(await confirmBox('Tolak OT ini?', `${row.user_name} · ${fmtMin(row.ot.minutes)} pada ${dayLabel(row.in_at)}`, 'Tolak OT'))) return;
+    await busy(btn, async () => { await api(`/api/overtime/${row.id}`, { method: 'PATCH', body: { action: act } }); toast(act === 'approve' ? 'OT diluluskan' : act === 'reject' ? 'OT ditolak' : 'Keputusan dibatalkan'); await load(); });
+  });
   await load();
+}
+
+function otItem(r, isAdmin) {
+  const o = r.ot;
+  return `<div class="rec grouped ot-item ${o.status}">
+    <div class="lead">${r.out_selfie ? `<img class="lead-img" data-photo="${esc(r.out_selfie)}" data-zoom alt="Selfie keluar ${esc(r.user_name || '')}">` : avatar(r.user_name, 'lg')}</div>
+    <div class="what">
+      <div class="t">${isAdmin ? `${esc(r.user_name)} · ` : ''}${dayLabel(r.in_at)}</div>
+      <div class="s"><span class="mono">${fmtTime(r.in_at)} → ${fmtTime(r.out_at)}</span><span>${OT_KIND[o.kind]} · ${o.rate}×</span></div>
+      ${o.reason ? `<div class="ot-reason">${esc(o.reason)}${o.project_name ? ` · <b>${esc(o.project_name)}</b>` : ''}</div>` : ''}
+      ${o.admin_note ? `<div class="s">Nota admin: ${esc(o.admin_note)}</div>` : ''}
+    </div>
+    <div class="hrs">${fmtMin(o.minutes)}<small>OT</small></div>
+    <div class="ot-foot">${otPill(o)}${o.decided_by_name && o.status !== 'pending' ? `<span class="muted small">oleh ${esc(firstName(o.decided_by_name))}</span>` : ''}
+      ${isAdmin ? (o.status === 'pending'
+        ? `<span class="ot-acts"><button class="btn sm danger" data-ot-act="reject" data-id="${r.id}">Tolak</button><button class="btn sm" data-ot-act="edit" data-id="${r.id}">Ubah jam</button><button class="btn sm primary" data-ot-act="approve" data-id="${r.id}">${ICON.check}<span>Lulus</span></button></span>`
+        : `<span class="ot-acts"><button class="btn sm ghost" data-ot-act="reset" data-id="${r.id}">Batal keputusan</button></span>`) : ''}</div>
+  </div>`;
+}
+function renderOTList(rows, isAdmin, f, t) {
+  const ots = rows.filter((r) => r.ot);
+  ots.sort((a, b) => (b.ot.status === 'pending') - (a.ot.status === 'pending') || (a.in_at < b.in_at ? 1 : -1));
+  state.otRows = ots;
+  const sum = (arr, k) => arr.reduce((s, r) => s + (r.ot[k] || 0), 0);
+  const pend = ots.filter((r) => r.ot.status === 'pending'), appr = ots.filter((r) => r.ot.status === 'approved');
+  const paid = appr.reduce((s, r) => s + r.ot.approved_minutes * r.ot.rate, 0);
+  const per = {};
+  ots.forEach((r) => { const x = (per[r.user_name] = per[r.user_name] || { a: 0, p: 0, w: 0 }); if (r.ot.status === 'approved') { x.a += r.ot.approved_minutes; x.w += r.ot.approved_minutes * r.ot.rate; } if (r.ot.status === 'pending') x.p += r.ot.minutes; });
+  $('#rsum').innerHTML = `<div class="stats">
+      <div class="${pend.length ? 'warn' : ''}"><div class="eyebrow">Menunggu</div><div class="v">${pend.length}<small> · ${fmtMin(sum(pend, 'minutes'))}</small></div></div>
+      <div><div class="eyebrow">OT diluluskan</div><div class="v">${fmtNum(sum(appr, 'approved_minutes') / 60, 1)}<small> j</small></div></div>
+      <div><div class="eyebrow">Jam bayaran</div><div class="v">${fmtNum(paid / 60, 1)}<small> j</small></div></div></div>
+    <p class="muted small" style="margin:8px 2px 0">Jam bayaran = jam OT diluluskan × kadar (1.5× hari biasa, 2× hari rehat, 3× cuti umum).</p>
+    ${isAdmin && Object.keys(per).length ? `<div class="people">${Object.entries(per).sort((a, b) => b[1].w - a[1].w).map(([n, v]) => `<div class="person-card">${avatar(n)}<div><b>${esc(n)}</b>
+      <small>${fmtMin(v.a)} lulus${v.p ? ` · <span class="txt-warn">${fmtMin(v.p)} menunggu</span>` : ''}</small></div><span class="mono" title="Jam bayaran">${fmtNum(v.w / 60, 1)} j</span></div>`).join('')}</div>` : ''}`;
+  $('#rtbl').innerHTML = ots.length ? `<div class="rec-list">${ots.map((r) => otItem(r, isAdmin)).join('')}</div>`
+    : emptyBox(ICON.punch, 'Tiada lebih masa', 'OT direkod automatik bila punch out selepas waktu kerja tamat.');
+  hydratePhotos($('#rtbl'));
+  $('#rcsv').onclick = () => {
+    const c = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const dt = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: TZ, hour12: false }) : '');
+    const st = { pending: 'Menunggu', approved: 'Diluluskan', rejected: 'Ditolak' };
+    const head = ['Staff', 'Tarikh', 'Masuk', 'Keluar', 'Jenis hari', 'Kadar', 'OT dikira (minit)', 'Status', 'OT diluluskan (minit)', 'Jam bayaran (× kadar)', 'Projek', 'Sebab', 'Nota admin'];
+    const lines = [head.map(c).join(',')].concat(ots.map((r) => [r.user_name, ymd(r.in_at), dt(r.in_at), dt(r.out_at), OT_KIND[r.ot.kind], r.ot.rate, r.ot.minutes, st[r.ot.status],
+      r.ot.approved_minutes ?? '', r.ot.status === 'approved' ? ((r.ot.approved_minutes * r.ot.rate) / 60).toFixed(2) : '', r.ot.project_name || '', r.ot.reason, r.ot.admin_note].map(c).join(',')));
+    downloadText(`ot-ajc-${f}-hingga-${t}.csv`, '\ufeff' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+    toast('Fail CSV OT dimuat turun');
+  };
+}
+function otApproveForm(row, after) {
+  const o = row.ot; let mins = o.approved_minutes || o.minutes; const step = 15;
+  openModal(`
+    <div class="modal-head"><div><div class="eyebrow">${esc(row.user_name)} · ${dayLabel(row.in_at)}</div><h2>Luluskan OT</h2></div><button class="btn icon ghost" data-close aria-label="Tutup">${ICON.x}</button></div>
+    <form id="oaf" class="form">
+      <div class="fsec">
+        <div class="stp"><span>Jam diluluskan<br><small class="muted">Dikira: ${fmtMin(o.minutes)} · ${OT_KIND[o.kind]} ${o.rate}×</small></span>
+          <div class="stepper"><button type="button" data-d="-1" aria-label="Kurang 15 minit">${ICON.minus}</button><output id="oa-min">${fmtMin(mins)}</output><button type="button" data-d="1" aria-label="Tambah 15 minit">${ICON.plus}</button></div></div>
+        <label class="f">Nota (pilihan)<input id="oa-note" placeholder="cth: Diluluskan 2 jam sahaja" value="${esc(o.admin_note || '')}"></label>
+      </div>
+      <div class="modal-foot"><button type="button" class="btn" data-close>Batal</button><button class="btn primary" id="oa-ok">${ICON.check}<span>Luluskan</span></button></div>
+    </form>`, () => {
+    $('#oaf').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (!b) return; mins = Math.max(step, Math.min(o.minutes, mins + Number(b.dataset.d) * step)); $('#oa-min').textContent = fmtMin(mins); });
+    $('#oaf').onsubmit = (e) => { e.preventDefault(); busy($('#oa-ok'), async () => {
+      await api(`/api/overtime/${row.id}`, { method: 'PATCH', body: { action: 'approve', minutes: mins, note: $('#oa-note').value } });
+      closeModal(); toast(`OT ${fmtMin(mins)} diluluskan`); await after();
+    }); };
+  });
 }
 
 /* ================= Staff (admin) ================= */
 async function renderStaff() {
-  const [users, offices] = await Promise.all([api('/api/users'), api('/api/offices')]);
+  const [users, offices, st] = await Promise.all([api('/api/users'), api('/api/offices'), api('/api/settings')]);
+  const span = (w) => (w ? `${fmt12(w.start)} – ${fmt12(w.end)}` : '<span class="muted">Hari rehat</span>');
   shell(`
     ${pageHead('Staff', `${users.filter((u) => u.active).length} akaun aktif`, `<button class="btn primary" id="news">${ICON.plus}<span>Tambah staff</span></button>`)}
     <div class="staff-grid">
@@ -1131,7 +1299,20 @@ async function renderStaff() {
           <small>${o.lat != null ? `<a class="mono" href="${mapLink(o.lat, o.lng)}" target="_blank" rel="noopener">${o.lat.toFixed(5)}, ${o.lng.toFixed(5)}</a> · radius ${o.radius_m} m` : '<span class="txt-bad">Lokasi belum ditetapkan</span>'}</small></div>
         <button class="btn" data-o="${o.id}">Edit</button></div>`).join('')}</div>
       ${IS_DEMO() ? '<div class="notice">' + ICON.alert + '<span>Koordinat di atas ialah <b>contoh</b>. Pergi ke setiap lokasi, tekan <b>Edit → Guna lokasi saya sekarang</b>, dan simpan.</span></div>' : ''}
+    </section>
+    <section class="stack">
+      <div class="section-head"><div><h2>Waktu kerja & lebih masa</h2><p class="muted small">OT dikira automatik bila staff punch out selepas waktu tamat.</p></div>
+        <button class="btn" id="edit-st">${ICON.edit}<span>Ubah</span></button></div>
+      <div class="card kv">
+        <div><span>Isnin – Jumaat</span><b>${span(st.work[1])}</b></div>
+        <div><span>Sabtu</span><b>${span(st.work[6])}</b></div>
+        <div><span>Ahad</span><b>${span(st.work[0])}</b></div>
+        <div><span>OT minimum</span><b>${st.ot_min} minit · bundar ke bawah ${st.ot_round} minit</b></div>
+        <div><span>Kadar OT</span><b>1.5× hari biasa · 2× hari rehat · 3× cuti umum</b></div>
+        <div><span>Cuti umum</span><b>${st.holidays.length ? st.holidays.map((h) => new Date(`${h}T00:00:00+08:00`).toLocaleDateString('ms-MY', { timeZone: TZ, day: 'numeric', month: 'short' })).join(', ') : '<span class="muted">Belum ditetapkan</span>'}</b></div>
+      </div>
     </section>`);
+  $('#edit-st').onclick = () => settingsForm(st);
   $('#newo').onclick = () => officeForm();
   $$('[data-o]').forEach((b) => (b.onclick = () => officeForm(offices.find((o) => o.id === Number(b.dataset.o)), offices.length)));
   $('#news').onclick = () => staffForm();
@@ -1165,6 +1346,50 @@ function staffForm(u = null) {
       else { body.username = $('#sf-user').value; await api('/api/users', { body }); }
       closeModal(); toast('Staff disimpan');
       if (currentRoute() === 'staff') renderStaff(); else router();
+    }); };
+  });
+}
+
+function settingsForm(st) {
+  const holidays = [...st.holidays];
+  const dayRow = (key, label, w, canOff) => `<div class="fsec">
+      <div class="fsec-h">${label}</div>
+      ${canOff ? `<label class="switch"><input type="checkbox" id="${key}-on" ${w ? 'checked' : ''}><span class="sw" aria-hidden="true"></span><span><b>Hari bekerja</b><small>Jika dimatikan, semua jam pada hari ini dikira OT (2×)</small></span></label>` : ''}
+      <div class="grid2" id="${key}-times" ${w || !canOff ? '' : 'hidden'}>
+        <label class="f">Mula<input type="time" id="${key}-s" value="${w?.start || '08:30'}"></label>
+        <label class="f">Tamat<input type="time" id="${key}-e" value="${w?.end || '17:30'}"></label>
+      </div></div>`;
+  const hol = () => holidays.length ? holidays.map((h) => `<span class="qchip on">${new Date(`${h}T00:00:00+08:00`).toLocaleDateString('ms-MY', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' })}<button type="button" data-rm="${h}" aria-label="Buang ${h}">${ICON.x}</button></span>`).join('') : '<span class="muted small">Tiada</span>';
+  openModal(`
+    <div class="modal-head"><div><div class="eyebrow">Tetapan</div><h2>Waktu kerja & OT</h2></div><button class="btn icon ghost" data-close aria-label="Tutup">${ICON.x}</button></div>
+    <form id="stf" class="form" novalidate>
+      ${dayRow('wk', 'Isnin – Jumaat', st.work[1], false)}
+      ${dayRow('sat', 'Sabtu', st.work[6], true)}
+      ${dayRow('sun', 'Ahad', st.work[0], true)}
+      <div class="fsec"><div class="fsec-h">Kiraan OT</div>
+        <div class="grid2">
+          <label class="f">OT minimum<select id="st-min">${[0, 15, 30, 60].map((v) => `<option value="${v}" ${st.ot_min === v ? 'selected' : ''}>${v ? `${v} minit` : 'Tiada'}</option>`).join('')}</select></label>
+          <label class="f">Bundar ke bawah<select id="st-round">${[1, 15, 30].map((v) => `<option value="${v}" ${st.ot_round === v ? 'selected' : ''}>${v === 1 ? 'Tidak dibundar' : `${v} minit`}</option>`).join('')}</select></label>
+        </div>
+        <p class="muted small" style="margin:0">Contoh: tamat 5:30 ptg, punch out 8:20 mlm = 2j 50m, kemudian dibundar ke 2j 45m.</p>
+      </div>
+      <div class="fsec"><div class="fsec-h">Cuti umum (OT 3×)</div>
+        <div class="qchips hol" id="st-hol">${hol()}</div>
+        <div class="row-add"><input type="date" id="st-hd" aria-label="Tarikh cuti umum"><button type="button" class="btn" id="st-add">${ICON.plus}<span>Tambah</span></button></div>
+      </div>
+      <div class="err" id="st-err" hidden></div>
+      <div class="modal-foot"><button type="button" class="btn" data-close>Batal</button><button class="btn primary" id="st-save">${ICON.check}<span>Simpan</span></button></div>
+    </form>`, () => {
+    ['sat', 'sun'].forEach((k) => ($(`#${k}-on`).onchange = (e) => { $(`#${k}-times`).hidden = !e.target.checked; }));
+    $('#st-add').onclick = () => { const v = $('#st-hd').value; if (v && !holidays.includes(v)) { holidays.push(v); holidays.sort(); $('#st-hol').innerHTML = hol(); } $('#st-hd').value = ''; };
+    $('#st-hol').onclick = (e) => { const b = e.target.closest('[data-rm]'); if (!b) return; holidays.splice(holidays.indexOf(b.dataset.rm), 1); $('#st-hol').innerHTML = hol(); };
+    $('#stf').onsubmit = (e) => { e.preventDefault(); busy($('#st-save'), async () => {
+      const t = (k) => ({ start: $(`#${k}-s`).value, end: $(`#${k}-e`).value });
+      const wk = t('wk');
+      const work = [$('#sun-on').checked ? t('sun') : null, wk, wk, wk, wk, wk, $('#sat-on').checked ? t('sat') : null];
+      try { await api('/api/settings', { method: 'PATCH', body: { work, ot_min: Number($('#st-min').value), ot_round: Number($('#st-round').value), holidays } }); }
+      catch (err) { $('#st-err').textContent = err.message; $('#st-err').hidden = false; throw err; }
+      closeModal(); toast('Tetapan waktu kerja disimpan'); renderStaff();
     }); };
   });
 }

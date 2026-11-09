@@ -1,7 +1,7 @@
 /* AJC Sistem Tapak — service worker
    Network-first untuk fail app (sentiasa versi terbaru bila ada internet), cache sebagai sandaran bila offline.
    Fon Google: cache-first. Tukar VERSION bila struktur fail berubah. */
-const VERSION = 'ajc-v7';
+const VERSION = 'ajc-v8';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'demo-backend.js', 'logo.png', 'logo-white.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png', 'favicon-64.png', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
